@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-shiftswap}
+      POSTGRES_USER: ${DB_USERNAME:-shiftswap}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shiftswap_local}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - shiftswap_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-shiftswap} -d ${DB_DATABASE:-shiftswap}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  shiftswap_postgres_data:
