@@ -189,45 +189,45 @@ The following are explicitly excluded from the portfolio version:
 
 ### 5.1 Authentication & Tenancy
 
-| ID | Requirement |
-|---|---|
-| FR-1 | Users can register and create a new business (tenant). |
+| ID   | Requirement                                                                                                                                                                                                               |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-1 | Users can register and create a new business (tenant).                                                                                                                                                                    |
 | FR-2 | Owners/Managers can add staff by email. If the email is already registered, the user is linked to the business with the Staff role. If not, a pending invitation record is created and fulfilled when the user registers. |
-| FR-3 | Each user can have different roles in different businesses. |
-| FR-4 | All data queries are scoped by `business_id` to ensure tenant isolation. |
-| FR-5 | Middleware/policies prevent users from accessing other businesses' data (no IDOR). |
+| FR-3 | Each user can have different roles in different businesses.                                                                                                                                                               |
+| FR-4 | All data queries are scoped by `business_id` to ensure tenant isolation.                                                                                                                                                  |
+| FR-5 | Middleware/policies prevent users from accessing other businesses' data (no IDOR).                                                                                                                                        |
 
 ### 5.2 Roles & Permissions
 
-| ID | Requirement |
-|---|---|
-| FR-6 | Roles per business: Owner, Manager, Staff. |
-| FR-7 | Owners and Managers can create/edit/delete shifts and approve/reject swaps and time-off. |
+| ID   | Requirement                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------------------- |
+| FR-6 | Roles per business: Owner, Manager, Staff.                                                                          |
+| FR-7 | Owners and Managers can create/edit/delete shifts and approve/reject swaps and time-off.                            |
 | FR-8 | Staff can view their own shifts, request time off, and offer/request swaps. Staff cannot approve swaps or time-off. |
-| FR-9 | Owners can manage roles (promote/demote) within their business. |
+| FR-9 | Owners can manage roles (promote/demote) within their business.                                                     |
 
 ### 5.3 Shift Management
 
-| ID | Requirement |
-|---|---|
-| FR-10 | Managers can create shifts with: date, start time, end time, optional location, optional role/type (e.g., cashier, barista). |
-| FR-11 | Managers can assign one or more staff to a shift. |
+| ID    | Requirement                                                                                                                                                                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-10 | Managers can create shifts with: date, start time, end time, optional location, optional role/type (e.g., cashier, barista).                                                                                                                                              |
+| FR-11 | Managers can assign one or more staff to a shift.                                                                                                                                                                                                                         |
 | FR-12 | System validates: no overlapping shifts for the same staff member; shifts do not conflict with approved time-off. **Overlap rule:** two shifts overlap when `new_start < existing_end AND new_end > existing_start` for the same `user_id` within the same `business_id`. |
-| FR-13 | Managers can view shifts by day, week, and month (calendar view). |
-| FR-14 | Staff can view their upcoming shifts and an optional list of open (unassigned) shifts. |
+| FR-13 | Managers can view shifts by day, week, and month (calendar view).                                                                                                                                                                                                         |
+| FR-14 | Staff can view their upcoming shifts and an optional list of open (unassigned) shifts.                                                                                                                                                                                    |
 
 ### 5.4 Shift Swap Marketplace
 
-| ID | Requirement |
-|---|---|
-| FR-15 | Staff can offer one of their shifts for swap (select shift + optional note). Swap status set to `offered`. |
-| FR-16 | Other staff can browse offered shifts and request to take one. Multiple workers may offer different assignments on the same shift. |
+| ID    | Requirement                                                                                                                                                                                                                                          |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-15 | Staff can offer one of their shifts for swap (select shift + optional note). Swap status set to `offered`.                                                                                                                                           |
+| FR-16 | Other staff can browse offered shifts and request to take one. Multiple workers may offer different assignments on the same shift.                                                                                                                   |
 | FR-17 | When a staff member requests an offered shift, a `ShiftSwap` record is created with status `pending_approval`. Only one request may be pending for a given offered assignment; competing requests are cancelled and the affected staff are notified. |
-| FR-18 | Manager can view pending swap requests and approve or reject each. |
-| FR-19 | On approval: original staff `shift_staff.status` set to `removed`; new staff assigned; both users notified. |
-| FR-20 | On rejection: swap reverts to `offered` state; requesting staff notified. |
-| FR-21 | Staff can cancel their own offer while status is `offered`. Swap status set to `cancelled`. |
-| FR-22 | System prevents swaps that create overlapping shifts or conflict with approved time-off (same rule as FR-12). |
+| FR-18 | Manager can view pending swap requests and approve or reject each.                                                                                                                                                                                   |
+| FR-19 | On approval: original staff `shift_staff.status` set to `removed`; new staff assigned; both users notified.                                                                                                                                          |
+| FR-20 | On rejection: swap reverts to `offered` state; requesting staff notified.                                                                                                                                                                            |
+| FR-21 | Staff can cancel their own offer while status is `offered`. Swap status set to `cancelled`.                                                                                                                                                          |
+| FR-22 | System prevents swaps that create overlapping shifts or conflict with approved time-off (same rule as FR-12).                                                                                                                                        |
 
 **Swap status machine:**
 
@@ -243,25 +243,25 @@ A manager rejection reverts the offer to `offered`; automatic cancellation of a 
 
 ### 5.5 Time-Off Requests
 
-| ID | Requirement |
-|---|---|
-| FR-23 | Staff can submit time-off requests: start date, end date, optional reason. Initial status: `pending`. |
-| FR-24 | Manager can view pending requests and approve or reject with optional comment. |
+| ID    | Requirement                                                                                                                  |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------- |
+| FR-23 | Staff can submit time-off requests: start date, end date, optional reason. Initial status: `pending`.                        |
+| FR-24 | Manager can view pending requests and approve or reject with optional comment.                                               |
 | FR-25 | System flags conflicts: if time-off overlaps with existing assigned shifts, a warning is shown to the manager during review. |
-| FR-26 | Notifications sent on: time-off submitted (to manager), time-off approved/rejected (to staff). |
+| FR-26 | Notifications sent on: time-off submitted (to manager), time-off approved/rejected (to staff).                               |
 
 ### 5.6 Notifications
 
-| ID | Requirement |
-|---|---|
+| ID    | Requirement                                                                                                                                               |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FR-27 | Queued email notifications for: new shift assigned; shift offered for swap; swap requested; swap approved/rejected; time-off submitted/approved/rejected. |
-| FR-28 | Optional in-app notifications: simple list of recent events; mark as read. |
+| FR-28 | Optional in-app notifications: simple list of recent events; mark as read.                                                                                |
 
 ### 5.7 Dashboard & Basic Reporting
 
-| ID | Requirement |
-|---|---|
-| FR-29 | Manager/Owner dashboard: upcoming shifts (next 7 days), count of pending swap requests, count of pending time-off requests. |
+| ID    | Requirement                                                                                                                                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-29 | Manager/Owner dashboard: upcoming shifts (next 7 days), count of pending swap requests, count of pending time-off requests.                 |
 | FR-30 | Staff dashboard: their upcoming shifts (next 7–14 days), status of pending time-off requests, status of swap requests they are involved in. |
 
 ---
@@ -270,47 +270,47 @@ A manager rejection reverts the offer to `offered`; automatic cancellation of a 
 
 ### 6.1 Performance
 
-| ID | Requirement |
-|---|---|
-| NFR-1 | Typical pages load in < 2 seconds on standard broadband. |
-| NFR-2 | Calendar views for up to 30 staff and 31 days remain responsive. |
+| ID    | Requirement                                                                                                                             |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| NFR-1 | Typical pages load in < 2 seconds on standard broadband.                                                                                |
+| NFR-2 | Calendar views for up to 30 staff and 31 days remain responsive.                                                                        |
 | NFR-3 | Dashboard summary queries use DB-level aggregation (not PHP-level counting). Eager loading enforced — no N+1 queries on shift listings. |
 
 ### 6.2 Security
 
-| ID | Requirement |
-|---|---|
-| NFR-4 | Passwords hashed using Laravel's default (bcrypt/argon2). |
-| NFR-5 | CSRF protection enabled for all state-changing requests. |
-| NFR-6 | Authorization enforced via Laravel policies/gates; no IDOR vulnerabilities. |
-| NFR-7 | HTTPS enforced in production (via ALB or reverse proxy with cert). |
+| ID    | Requirement                                                                                                 |
+| ----- | ----------------------------------------------------------------------------------------------------------- |
+| NFR-4 | Passwords hashed using Laravel's default (bcrypt/argon2).                                                   |
+| NFR-5 | CSRF protection enabled for all state-changing requests.                                                    |
+| NFR-6 | Authorization enforced via Laravel policies/gates; no IDOR vulnerabilities.                                 |
+| NFR-7 | HTTPS enforced in production (via ALB or reverse proxy with cert).                                          |
 | NFR-8 | Login endpoint rate-limited using Laravel's `ThrottleRequests` middleware (e.g., 5 attempts/minute per IP). |
 
 ### 6.3 Testing
 
-| ID | Requirement |
-|---|---|
-| NFR-9 | Feature tests written with **Pest** covering all critical workflows: auth, shift CRUD, swap state transitions, time-off approval, and conflict detection. |
-| NFR-10 | Each swap state transition (FR-15 → FR-21) must have a corresponding test asserting the correct status, DB state, and notification dispatch. |
-| NFR-11 | Conflict detection logic (FR-12, FR-22) must be unit-tested with edge cases: exact boundary times, same-day overlap, time-off boundary. |
-| NFR-12 | Tests run in CI (GitHub Actions) on every push. Pipeline fails on test failure — no merging broken code. |
-| NFR-13 | Use `RefreshDatabase` + factories for test isolation. No shared mutable state between tests. |
+| ID     | Requirement                                                                                                                                               |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NFR-9  | Feature tests written with **Pest** covering all critical workflows: auth, shift CRUD, swap state transitions, time-off approval, and conflict detection. |
+| NFR-10 | Each swap state transition (FR-15 → FR-21) must have a corresponding test asserting the correct status, DB state, and notification dispatch.              |
+| NFR-11 | Conflict detection logic (FR-12, FR-22) must be unit-tested with edge cases: exact boundary times, same-day overlap, time-off boundary.                   |
+| NFR-12 | Tests run in CI (GitHub Actions) on every push. Pipeline fails on test failure — no merging broken code.                                                  |
+| NFR-13 | Use `RefreshDatabase` + factories for test isolation. No shared mutable state between tests.                                                              |
 
 > No tests = junior signal to overseas employers. Pest is preferred over PHPUnit for readability; the syntax reads closer to plain English and is easier to walk through in a code review.
 
 ### 6.4 Reliability
 
-| ID | Requirement |
-|---|---|
-| NFR-14 | Automated daily database backups configured on RDS. |
+| ID     | Requirement                                                                   |
+| ------ | ----------------------------------------------------------------------------- |
+| NFR-14 | Automated daily database backups configured on RDS.                           |
 | NFR-15 | Application logs stored and accessible (CloudWatch Logs or log files on EC2). |
 
 ### 6.5 Maintainability
 
-| ID | Requirement |
-|---|---|
-| NFR-16 | Code follows Laravel conventions: Controllers, Form Requests, Models, Policies, Service classes where appropriate. Minimal logic in controllers. |
-| NFR-17 | Vue 3 frontend uses Composables and/or Pinia for shared state; reusable components for forms, tables, and modals. |
+| ID     | Requirement                                                                                                                                                        |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| NFR-16 | Code follows Laravel conventions: Controllers, Form Requests, Models, Policies, Service classes where appropriate. Minimal logic in controllers.                   |
+| NFR-17 | Vue 3 frontend uses Composables and/or Pinia for shared state; reusable components for forms, tables, and modals.                                                  |
 | NFR-18 | README includes: setup instructions, architecture overview, AWS services used and rationale, link to Postman collection or OpenAPI spec, and architecture diagram. |
 
 **API Design Standards (NFR-19)**
@@ -318,38 +318,38 @@ A manager rejection reverts the offer to `offered`; automatic cancellation of a 
 All API endpoints must follow these conventions:
 
 - **Resource naming:** plural nouns, nested where ownership is implied.
-  ```
-  GET    /api/businesses/{business}/shifts
-  POST   /api/businesses/{business}/shifts
-  PATCH  /api/businesses/{business}/shifts/{shift}
-  DELETE /api/businesses/{business}/shifts/{shift}
+    ```
+    GET    /api/businesses/{business}/shifts
+    POST   /api/businesses/{business}/shifts
+    PATCH  /api/businesses/{business}/shifts/{shift}
+    DELETE /api/businesses/{business}/shifts/{shift}
 
-  POST   /api/businesses/{business}/shift-swaps/{swap}/approve
-  POST   /api/businesses/{business}/shift-swaps/{swap}/reject
-  ```
+    POST   /api/businesses/{business}/shift-swaps/{swap}/approve
+    POST   /api/businesses/{business}/shift-swaps/{swap}/reject
+    ```
 - **HTTP status codes used correctly:**
-  - `200` — successful read/update
-  - `201` — resource created (return created resource)
-  - `204` — successful delete (no body)
-  - `422` — validation error (Laravel default)
-  - `403` — unauthorized action (Policy denial)
-  - `404` — resource not found
+    - `200` — successful read/update
+    - `201` — resource created (return created resource)
+    - `204` — successful delete (no body)
+    - `422` — validation error (Laravel default)
+    - `403` — unauthorized action (Policy denial)
+    - `404` — resource not found
 - **Consistent error envelope:**
-  ```json
-  {
-    "message": "Human-readable error",
-    "errors": {
-      "field": ["Validation message"]
+    ```json
+    {
+        "message": "Human-readable error",
+        "errors": {
+            "field": ["Validation message"]
+        }
     }
-  }
-  ```
+    ```
 - **Consistent success envelope** (optional but recommended):
-  ```json
-  {
-    "data": { }
-  }
-  ```
-  Use Laravel API Resources (`php artisan make:resource`) for all responses — never return raw Eloquent models.
+    ```json
+    {
+        "data": {}
+    }
+    ```
+    Use Laravel API Resources (`php artisan make:resource`) for all responses — never return raw Eloquent models.
 
 **Authorization: Laravel Policies (NFR-20)**
 
@@ -362,18 +362,18 @@ All API endpoints must follow these conventions:
 
 - All notifications must be dispatched as **queued Jobs** or **queued Notifiables** — never `Mail::send()` or `Notification::send()` inline in a controller.
 - Each notification event maps to a dedicated Job class:
-  ```
-  App\Jobs\SendShiftAssignedNotification
-  App\Jobs\SendSwapApprovedNotification
-  App\Jobs\SendTimeOffStatusNotification
-  ```
+    ```
+    App\Jobs\SendShiftAssignedNotification
+    App\Jobs\SendSwapApprovedNotification
+    App\Jobs\SendTimeOffStatusNotification
+    ```
 - Jobs must implement `ShouldQueue` and be dispatchable independently for testing.
 - Use `Queue::fake()` in tests to assert jobs are dispatched without actually sending email.
 
 ### 6.6 Scalability (Conceptual)
 
-| ID | Requirement |
-|---|---|
+| ID     | Requirement                                                                                                                                                                                                                         |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | NFR-22 | Architecture is describable as scalable: stateless app servers (EC2/ECS), managed DB (RDS), static assets on S3 (+ CloudFront optional), queues for async work. Auto-scaling is not required to implement, but must be explainable. |
 
 ---
@@ -382,98 +382,98 @@ All API endpoints must follow these conventions:
 
 ### businesses
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| name | string | |
-| slug | string unique | URL-safe identifier |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column     | Type          | Notes               |
+| ---------- | ------------- | ------------------- |
+| id         | bigint PK     |                     |
+| name       | string        |                     |
+| slug       | string unique | URL-safe identifier |
+| created_at | timestamp     |                     |
+| updated_at | timestamp     |                     |
 
 ### users
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| name | string | |
-| email | string unique | |
-| password | string | bcrypt/argon2 |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column     | Type          | Notes         |
+| ---------- | ------------- | ------------- |
+| id         | bigint PK     |               |
+| name       | string        |               |
+| email      | string unique |               |
+| password   | string        | bcrypt/argon2 |
+| created_at | timestamp     |               |
+| updated_at | timestamp     |               |
 
 ### business_user (pivot)
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| business_id | FK → businesses | |
-| user_id | FK → users | |
-| role | enum | owner / manager / staff |
+| Column      | Type            | Notes                   |
+| ----------- | --------------- | ----------------------- |
+| id          | bigint PK       |                         |
+| business_id | FK → businesses |                         |
+| user_id     | FK → users      |                         |
+| role        | enum            | owner / manager / staff |
 
 ### locations (optional)
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| business_id | FK → businesses | |
-| name | string | |
-| address | string nullable | |
+| Column      | Type            | Notes |
+| ----------- | --------------- | ----- |
+| id          | bigint PK       |       |
+| business_id | FK → businesses |       |
+| name        | string          |       |
+| address     | string nullable |       |
 
 ### shifts
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| business_id | FK → businesses | |
-| location_id | FK → locations nullable | |
-| start_at | datetime | |
-| end_at | datetime | |
-| role_label | string nullable | e.g., cashier, barista |
-| created_by | FK → users | |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column      | Type                    | Notes                  |
+| ----------- | ----------------------- | ---------------------- |
+| id          | bigint PK               |                        |
+| business_id | FK → businesses         |                        |
+| location_id | FK → locations nullable |                        |
+| start_at    | datetime                |                        |
+| end_at      | datetime                |                        |
+| role_label  | string nullable         | e.g., cashier, barista |
+| created_by  | FK → users              |                        |
+| created_at  | timestamp               |                        |
+| updated_at  | timestamp               |                        |
 
 ### shift_staff
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| shift_id | FK → shifts | |
-| user_id | FK → users | |
-| status | enum | assigned / removed |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column     | Type        | Notes              |
+| ---------- | ----------- | ------------------ |
+| id         | bigint PK   |                    |
+| shift_id   | FK → shifts |                    |
+| user_id    | FK → users  |                    |
+| status     | enum        | assigned / removed |
+| created_at | timestamp   |                    |
+| updated_at | timestamp   |                    |
 
 > `status` is required to preserve assignment history after a swap approval (FR-19). Use soft removal, not hard delete.
 
 ### shift_swaps
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| business_id | FK → businesses | |
-| shift_id | FK → shifts | |
-| offered_by | FK → users | |
-| requested_by | FK → users nullable | null until someone requests |
-| status | enum | offered / pending_approval / approved / rejected / cancelled |
-| manager_notes | text nullable | |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column        | Type                | Notes                                                        |
+| ------------- | ------------------- | ------------------------------------------------------------ |
+| id            | bigint PK           |                                                              |
+| business_id   | FK → businesses     |                                                              |
+| shift_id      | FK → shifts         |                                                              |
+| offered_by    | FK → users          |                                                              |
+| requested_by  | FK → users nullable | null until someone requests                                  |
+| status        | enum                | offered / pending_approval / approved / rejected / cancelled |
+| manager_notes | text nullable       |                                                              |
+| created_at    | timestamp           |                                                              |
+| updated_at    | timestamp           |                                                              |
 
 ### time_off_requests
 
-| Column | Type | Notes |
-|---|---|---|
-| id | bigint PK | |
-| business_id | FK → businesses | |
-| user_id | FK → users | |
-| start_date | date | |
-| end_date | date | |
-| reason | text nullable | |
-| status | enum | pending / approved / rejected |
-| manager_notes | text nullable | |
-| created_at | timestamp | |
-| updated_at | timestamp | |
+| Column        | Type            | Notes                         |
+| ------------- | --------------- | ----------------------------- |
+| id            | bigint PK       |                               |
+| business_id   | FK → businesses |                               |
+| user_id       | FK → users      |                               |
+| start_date    | date            |                               |
+| end_date      | date            |                               |
+| reason        | text nullable   |                               |
+| status        | enum            | pending / approved / rejected |
+| manager_notes | text nullable   |                               |
+| created_at    | timestamp       |                               |
+| updated_at    | timestamp       |                               |
 
 ### notifications (optional, in-app)
 
@@ -521,9 +521,9 @@ All API endpoints must follow these conventions:
 ### Compute
 
 - **EC2** (Amazon Linux 2) or **ECS Fargate** running:
-  - PHP 8.x + Laravel
-  - Nginx
-  - Queue worker (`php artisan queue:work`)
+    - PHP 8.x + Laravel
+    - Nginx
+    - Queue worker (`php artisan queue:work`)
 
 ### Database
 
@@ -533,8 +533,8 @@ All API endpoints must follow these conventions:
 ### Storage
 
 - **S3** bucket for:
-  - Schedule exports (CSV/PDF)
-  - Optional: staff documents
+    - Schedule exports (CSV/PDF)
+    - Optional: staff documents
 
 ### Queues
 
@@ -545,20 +545,20 @@ All API endpoints must follow these conventions:
 
 - **VPC** with public subnet (ALB, NAT) and private subnet (app servers, RDS)
 - **Security groups:**
-  - ALB: allows 80/443 from internet
-  - App servers: allows traffic from ALB only
-  - RDS: allows MySQL port from app servers only
+    - ALB: allows 80/443 from internet
+    - App servers: allows traffic from ALB only
+    - RDS: allows MySQL port from app servers only
 - **IAM roles:** EC2/ECS role with least-privilege permissions to S3, SQS, CloudWatch Logs
 
 ### CI/CD
 
 - GitHub Actions pipeline:
-  1. Run tests
-  2. SSH to EC2 / trigger ECS deploy
-  3. Pull latest code
-  4. Run `composer install --no-dev`
-  5. Run `php artisan migrate --force`
-  6. Restart queue workers
+    1. Run tests
+    2. SSH to EC2 / trigger ECS deploy
+    3. Pull latest code
+    4. Run `composer install --no-dev`
+    5. Run `php artisan migrate --force`
+    6. Restart queue workers
 
 > You should be able to draw and explain this architecture in an interview, including how you would add auto-scaling (ECS Fargate + ALB target tracking) and a CDN (CloudFront in front of S3 and ALB).
 
@@ -578,7 +578,7 @@ Since this is a portfolio project, success is defined by:
 - Feature tests cover: auth, shift CRUD, all swap state transitions, time-off approval, conflict detection edge cases
 - Tests run in CI and pass on every push
 - `Queue::fake()` used to assert notification jobs are dispatched
-- *Signal to employer: you write testable code, not just working code*
+- _Signal to employer: you write testable code, not just working code_
 
 **2. API Design**
 
@@ -586,45 +586,45 @@ Since this is a portfolio project, success is defined by:
 - HTTP status codes used correctly and consistently
 - All responses go through Laravel API Resources — no raw model serialization
 - Consistent error envelope on validation and authorization failures
-- *Signal to employer: you understand API contracts, not just routing*
+- _Signal to employer: you understand API contracts, not just routing_
 
 **3. Authorization via Policies**
 
 - Every guarded action uses a Laravel Policy class
 - Controllers call `$this->authorize()` — no business logic in middleware
 - Policies are tested in isolation
-- *Signal to employer: you understand authorization architecture, not just authentication*
+- _Signal to employer: you understand authorization architecture, not just authentication_
 
 **4. Queue Jobs**
 
 - All email/notification logic is dispatched as a queued Job implementing `ShouldQueue`
 - No inline `Mail::send()` in controllers
 - Jobs are named, single-responsibility, and independently testable
-- *Signal to employer: you understand async systems and don't block the request cycle*
+- _Signal to employer: you understand async systems and don't block the request cycle_
 
 **5. README + Architecture Diagram**
 
 - README covers: local setup, env vars, architecture overview, AWS services and why each was chosen
 - Architecture diagram (draw.io or Excalidraw export) committed to repo
 - Postman collection or OpenAPI spec linked
-- *Signal to employer: you can communicate systems, not just build them*
+- _Signal to employer: you can communicate systems, not just build them_
 
 **Demonstrable skills**
 
 - Can explain:
-  - Multi-tenancy design and tenant isolation
-  - Shift swap state machine and conflict detection logic
-  - AWS architecture and service choices
-  - Why queues, why policies, why API Resources
+    - Multi-tenancy design and tenant isolation
+    - Shift swap state machine and conflict detection logic
+    - AWS architecture and service choices
+    - Why queues, why policies, why API Resources
 - Can walk through:
-  - Key API endpoints and their auth/authorization flow
-  - Key Vue components and state management
-  - Deployment process end-to-end
+    - Key API endpoints and their auth/authorization flow
+    - Key Vue components and state management
+    - Deployment process end-to-end
 
 **Portfolio impact**
 
 - Stands out vs. generic CRUD apps
-- Clearly communicates: *"I can design and build real SaaS-like systems"*
+- Clearly communicates: _"I can design and build real SaaS-like systems"_
 
 ---
 

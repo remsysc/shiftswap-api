@@ -6,9 +6,9 @@
 
 ## Overview
 
-| Sprint | Goal | Requirements | Est. size |
-|---|---|---|---|
-| 1 | Foundation + authentication, tenancy, and authorization vertical slice | SETUP, FR-1, FR-2, FR-7–FR-16 | L |
+| Sprint | Goal                                                                   | Requirements                  | Est. size |
+| ------ | ---------------------------------------------------------------------- | ----------------------------- | --------- |
+| 1      | Foundation + authentication, tenancy, and authorization vertical slice | SETUP, FR-1, FR-2, FR-7–FR-16 | L         |
 
 Sprint 1 assumes a solo developer or small team and has no fixed calendar deadline recorded yet. Estimates are relative, not delivery promises.
 
