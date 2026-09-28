@@ -1,6 +1,6 @@
 # SPEC — ShiftSwap
 
-> Status: Draft | Version: 1.5 | Date: September 18, 2026
+> Status: Draft | Version: 1.6 | Date: September 22, 2026
 > Source of truth for implementation. Any behavior not covered here is an open
 > question, not a green light to assume. When code and spec disagree, that is a
 > bug — determine which side is wrong and fix it, then update this file.
@@ -16,8 +16,8 @@ Vue 3 SPA frontend.
 
 Stack:
 
-- **Backend:** PHP 8.3 + Laravel 13, MySQL 8, Laravel Sanctum (SPA auth)
-- **Frontend:** Vue 3 + Vite + Pinia + Tailwind CSS
+- **Backend:** PHP 8.3 + Laravel 13, MySQL 8, stateless Bearer token auth
+- **Frontend:** Vue 3 + Vite + Pinia + Tailwind CSS (separate repository)
 - **Queue:** Laravel Jobs (SQS in production, database driver locally)
 - **Testing:** Pest (feature + unit)
 - **Deployment:** AWS EC2/ECS + RDS + S3 + SQS
@@ -53,10 +53,10 @@ implemented or assumed:
 | FR-6  | WHEN an invite token is expired or invalid THE SYSTEM SHALL return 422 with `token: ["Invalid or expired invitation."]`.                                                       |
 | FR-7  | THE SYSTEM SHALL scope all business data queries to `business_id` matching the authenticated user's active business context.                                                   |
 | FR-8  | IF a user attempts to access a resource belonging to a different business THEN THE SYSTEM SHALL return 403.                                                                    |
-| FR-9  | WHEN a user logs in with valid credentials THE SYSTEM SHALL issue a Sanctum session cookie and return the authenticated user object.                                           |
+| FR-9  | WHEN a user logs in with valid credentials THE SYSTEM SHALL issue a Bearer token and return the authenticated user object.                                                     |
 | FR-10 | WHEN a user logs in with invalid credentials THE SYSTEM SHALL return 401 with `message: "Invalid credentials."`.                                                               |
 | FR-11 | WHILE a login IP has exceeded 5 failed attempts in 60 seconds THE SYSTEM SHALL return 429 with `message: "Too many login attempts."`.                                          |
-| FR-12 | WHEN a user logs out THE SYSTEM SHALL invalidate the current Sanctum session token and return 204.                                                                             |
+| FR-12 | WHEN a user logs out THE SYSTEM SHALL invalidate the current Bearer token and return 204.                                                                                      |
 
 ### 3.2 Roles & Permissions
 
@@ -165,31 +165,33 @@ Implementation must keep this specification, the PRD, and `docs/DATA-MODELS.md` 
 
 ## 5. API Contracts
 
-All endpoints are prefixed `/api`. All requests and responses use `Content-Type: application/json`. All protected endpoints require a valid Sanctum session (cookie-based SPA auth).
+All endpoints are prefixed `/api`. All requests and responses use `Content-Type: application/json`. All protected endpoints require a valid Bearer token in the `Authorization: Bearer <token>` header.
 
 ### 5.1 Auth
+
+All protected endpoints require a valid Bearer token in the `Authorization: Bearer <token>` header.
 
 ```
 POST /api/auth/register
   Auth: none
   Request:  { name: string, email: string, password: string,
               password_confirmation: string, business_name: string }
-  Response 201: { data: User }
+  Response 201: { data: User, token: string }
   Response 422: { message: string, errors: { field: [string] } }
 
 POST /api/auth/login
   Auth: none
   Request:  { email: string, password: string }
-  Response 200: { data: User }
+  Response 200: { data: User, token: string }
   Response 401: { message: "Invalid credentials." }
   Response 429: { message: "Too many login attempts." }
 
 POST /api/auth/logout
-  Auth: required
+  Auth: required (Bearer token)
   Response 204: (no body)
 
 GET /api/auth/user
-  Auth: required
+  Auth: required (Bearer token)
   Response 200: { data: User }
 ```
 
@@ -197,45 +199,45 @@ GET /api/auth/user
 
 ```
 GET /api/businesses/{business}/staff
-  Auth: manager, owner
+  Auth: Bearer token, manager, owner
   Response 200: { data: [BusinessUser] }
 
 POST /api/businesses/{business}/staff
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { email: string, role: "manager"|"staff" }
   Response 201: { data: BusinessUser }   -- if user exists and was linked
            202: { data: Invitation }      -- if invite was sent
   Response 422: { message, errors }
 
 PATCH /api/businesses/{business}/staff/{user}
-  Auth: owner
+  Auth: Bearer token, owner
   Request:  { role: "manager"|"staff" }
   Response 200: { data: BusinessUser }
   Response 422: { message, errors }      -- e.g. cannot change own role
 
 DELETE /api/businesses/{business}/staff/{user}
-  Auth: owner
+  Auth: Bearer token, owner
   Response 204
 
 POST /api/businesses/{business}/ownership-transfer
-  Auth: owner
+  Auth: Bearer token, owner
   Request:  { successor_email: string }
   Response 202: { data: OwnershipTransfer }
   Response 422: { message, errors } -- successor must be an active member of this business
 
 POST /api/ownership-transfers/{token}/accept
-  Auth: required as successor
+  Auth: Bearer token (as successor)
   Response 204
   Response 422: { message, errors }
 
 GET /api/businesses/{business}/invitations
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Response 200: { data: [Invitation] }
 
 POST /api/invitations/{token}/accept
   Auth: none
   Request:  { name: string, password: string, password_confirmation: string }
-  Response 201: { data: User }
+  Response 201: { data: User, token: string }
   Response 422: { message, errors }
 ```
 
@@ -243,21 +245,21 @@ POST /api/invitations/{token}/accept
 
 ```
 GET /api/businesses/{business}/locations
-  Auth: any member
+  Auth: Bearer token, any member
   Response 200: { data: [Location] }
 
 POST /api/businesses/{business}/locations
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { name: string, address?: string }
   Response 201: { data: Location }
 
 PATCH /api/businesses/{business}/locations/{location}
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { name?: string, address?: string }
   Response 200: { data: Location }
 
 DELETE /api/businesses/{business}/locations/{location}
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Response 204
 ```
 
@@ -265,36 +267,36 @@ DELETE /api/businesses/{business}/locations/{location}
 
 ```
 GET /api/businesses/{business}/shifts
-  Auth: any member
+  Auth: Bearer token, any member
   Query:  start_date (required, date), end_date (required, date)
   Response 200: { data: [Shift with staff[]] }
 
 POST /api/businesses/{business}/shifts
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { start_at: datetime, end_at: datetime,
               location_id?: int, role_label?: string }
   Response 201: { data: Shift }
   Response 422: { message, errors }
 
 PATCH /api/businesses/{business}/shifts/{shift}
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { start_at?: datetime, end_at?: datetime,
               location_id?: int, role_label?: string }
   Response 200: { data: Shift }
   Response 422: { message, errors }
 
 DELETE /api/businesses/{business}/shifts/{shift}
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Response 204
 
 POST /api/businesses/{business}/shifts/{shift}/staff
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { user_id: int }
   Response 201: { data: ShiftStaff }
   Response 422: { message, errors }    -- overlap or time-off conflict
 
 DELETE /api/businesses/{business}/shifts/{shift}/staff/{user}
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Response 204
 ```
 
@@ -302,35 +304,35 @@ DELETE /api/businesses/{business}/shifts/{shift}/staff/{user}
 
 ```
 GET /api/businesses/{business}/shift-swaps
-  Auth: any member
+  Auth: Bearer token, any member
   Query:  status? (offered|pending_approval|approved|cancelled)
   Response 200: { data: [ShiftSwap] }
 
 POST /api/businesses/{business}/shift-swaps
-  Auth: staff, manager, owner
+  Auth: Bearer token, staff, manager, owner
   Request:  { shift_id: int, notes?: string }
   Response 201: { data: ShiftSwap }
   Response 403: (not assigned to shift)
   Response 422: { message, errors }
 
 POST /api/businesses/{business}/shift-swaps/{swap}/request
-  Auth: staff, manager, owner
+  Auth: Bearer token, staff, manager, owner
   Response 200: { data: ShiftSwap }
   Response 422: { message, errors }    -- overlap, time-off, or wrong status
 
 POST /api/businesses/{business}/shift-swaps/{swap}/approve
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { manager_notes?: string }
   Response 200: { data: ShiftSwap }
   Response 422: { message, errors }
 
 POST /api/businesses/{business}/shift-swaps/{swap}/reject
-  Auth: owner, manager
+  Auth: Bearer token, owner, manager
   Request:  { manager_notes?: string }
   Response 200: { data: ShiftSwap }
 
 POST /api/businesses/{business}/shift-swaps/{swap}/cancel
-  Auth: offered_by only
+  Auth: Bearer token, offered_by only
   Response 200: { data: ShiftSwap }
   Response 422: { message, errors }    -- wrong status
 ```
@@ -555,7 +557,7 @@ Cover the full request → response cycle including auth and policy enforcement.
 - Login with valid credentials returns user ✓
 - Login with invalid credentials returns 401 ✓
 - Rate limit returns 429 after 5 failures ✓
-- Logout returns 204 and invalidates session ✓
+- Logout returns 204 and invalidates the token ✓
 
 **Shifts**
 
@@ -680,3 +682,4 @@ This is not required for the MVP. Until implemented, shifts may be offered or re
 | 2026-09-18 | 1.3     | Added privacy-preserving cross-business conflict behavior; staff remain responsible for resolving cross-tenant schedule conflicts                                          |
 | 2026-09-18 | 1.4     | Added availability and soft minimum/maximum weekly hours targets to the post-MVP backlog; owner overrides remain allowed                                                   |
 | 2026-09-18 | 1.5     | Moved availability, hours targets, and staffing warnings into MVP; defined ownership transfer endpoints, invitation rules, and business timezone behavior                  |
+| 2026-09-22 | 1.6     | Switched authentication from Sanctum SPA cookie auth to stateless Bearer token auth; frontend deployed as a separate repository; API reusable by a future mobile app       |

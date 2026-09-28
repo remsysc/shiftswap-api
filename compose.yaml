@@ -1,4 +1,32 @@
 services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        restart: unless-stopped
+        depends_on:
+            postgres:
+                condition: service_healthy
+        environment:
+            APP_ENV: local
+            APP_DEBUG: 'true'
+            APP_KEY: ${APP_KEY}
+            APP_URL: http://127.0.0.1:8000
+            DB_CONNECTION: pgsql
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_DATABASE: ${DB_DATABASE:-shiftswap}
+            DB_USERNAME: ${DB_USERNAME:-shiftswap}
+            DB_PASSWORD: ${DB_PASSWORD:-shiftswap_local}
+            SESSION_DRIVER: database
+            CACHE_STORE: database
+            QUEUE_CONNECTION: database
+        ports:
+            - '127.0.0.1:8000:8000'
+        command: >-
+            sh -c 'php artisan migrate --force && php artisan serve
+            --host=0.0.0.0 --port=8000'
+
     postgres:
         image: docker.io/library/postgres:16.4-alpine
         restart: unless-stopped
