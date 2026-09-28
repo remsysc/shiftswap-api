@@ -1,8 +1,8 @@
 # ShiftSwap – Product Requirements Document (PRD)
 
-**Version:** 1.3
+**Version:** 1.4
 **Owner:** Rem
-**Date:** September 18, 2026
+**Date:** September 22, 2026
 **Status:** Draft (portfolio project)
 
 ---
@@ -50,12 +50,13 @@ Create a strong portfolio piece that stands out vs. typical CRUD apps and demons
 
 ### 1.4 API Design
 
-The backend exposes a **RESTful JSON API** built with Laravel. The Vue 3 frontend communicates exclusively via this API (no Blade views for the SPA). Authentication is handled via **Laravel Sanctum** (SPA cookie-based auth).
+The backend exposes a **RESTful JSON API** built with Laravel. The Vue 3 frontend communicates exclusively via this API (no Blade views for the SPA). The frontend is deployed as a separate repository.
 
-This decoupled design:
+Authentication is **stateless, token-based**: users receive a Bearer token on login, store it locally (localStorage/sessionStorage), and send it in the `Authorization: Bearer <token>` header with every request. This approach:
 
 - Demonstrates API-first architecture
-- Allows the API to be reused by a future mobile app
+- Allows the API to be reused by a future mobile app (iOS/Android)
+- Works seamlessly with separate repo deployments
 - Is a natural talking point in technical interviews
 
 ---
@@ -91,7 +92,7 @@ ShiftSwap demonstrates the ability to build a focused, modern alternative with c
 
 **Authentication & roles**
 
-- Email/password login & registration via Laravel Sanctum
+- Email/password login & registration with stateless Bearer token auth
 - Roles per business: Owner, Manager, Staff
 - Policies/gates enforce access control
 
@@ -278,13 +279,13 @@ A manager rejection reverts the offer to `offered`; automatic cancellation of a 
 
 ### 6.2 Security
 
-| ID    | Requirement                                                                                                 |
-| ----- | ----------------------------------------------------------------------------------------------------------- |
-| NFR-4 | Passwords hashed using Laravel's default (bcrypt/argon2).                                                   |
-| NFR-5 | CSRF protection enabled for all state-changing requests.                                                    |
-| NFR-6 | Authorization enforced via Laravel policies/gates; no IDOR vulnerabilities.                                 |
-| NFR-7 | HTTPS enforced in production (via ALB or reverse proxy with cert).                                          |
-| NFR-8 | Login endpoint rate-limited using Laravel's `ThrottleRequests` middleware (e.g., 5 attempts/minute per IP). |
+| ID    | Requirement                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------ |
+| NFR-4 | Passwords hashed using Laravel's default (bcrypt/argon2).                                                                |
+| NFR-5 | Bearer tokens sent via the `Authorization` header (not cookies), which avoids CSRF exposure for state-changing requests. |
+| NFR-6 | Authorization enforced via Laravel policies/gates; no IDOR vulnerabilities.                                              |
+| NFR-7 | HTTPS enforced in production (via ALB or reverse proxy with cert).                                                       |
+| NFR-8 | Login endpoint rate-limited using Laravel's `ThrottleRequests` middleware (e.g., 5 attempts/minute per IP).              |
 
 ### 6.3 Testing
 
