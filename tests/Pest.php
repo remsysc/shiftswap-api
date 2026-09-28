@@ -5,6 +5,26 @@ use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
+| Hermetic test database
+|--------------------------------------------------------------------------
+|
+| Laravel's dotenv loader is immutable, so DB_* variables exported in the
+| surrounding shell (common in container and CI shells) take precedence over
+| phpunit.xml / .env.testing and would point the suite at a live database.
+| Clearing them here — before any test boots the application — keeps the test
+| database resolution under the control of the test configuration and
+| guarantees the suite stays hermetic (in-memory SQLite via RefreshDatabase,
+| per NFR-13).
+|
+*/
+
+foreach (['DB_CONNECTION', 'DB_DATABASE', 'DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_URL', 'DB_SOCKET'] as $databaseVariable) {
+    putenv($databaseVariable);
+    unset($_ENV[$databaseVariable], $_SERVER[$databaseVariable]);
+}
+
+/*
+|--------------------------------------------------------------------------
 | Test Case
 |--------------------------------------------------------------------------
 |
