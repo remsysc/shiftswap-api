@@ -19,6 +19,6 @@ class BusinessResource extends JsonResource
             'name' => $this->name,
             'slug' => $this->slug,
             'timezone' => $this->timezone,
-        ]
+        ];
     }
 }
