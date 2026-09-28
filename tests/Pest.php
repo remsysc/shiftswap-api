@@ -2,6 +2,8 @@
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use App\Models\Business;
+use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
@@ -64,7 +66,30 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function createBusinessWithRole(string $role, ?Business $business = null): array
 {
-    // ..
+    //make a fake one if null
+    $business ??= Business::factory()->create();
+
+    //crea a new fake user
+    $user = User::factory()->create();
+
+    $business->users()->attach($user, ['role' => $role]);
+
+    return [$business, $user];
+}
+
+function createOwner(?Business $business = null)
+{
+    return createBusinessWithRole('owner', $business);
+}
+
+function createManager(?Business $business = null)
+{
+    return createBusinessWithRole('manager', $business);
+}
+
+function createStaff(?Business $business = null)
+{
+    return createBusinessWithRole('staff', $business);
 }

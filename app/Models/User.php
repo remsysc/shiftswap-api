@@ -41,4 +41,9 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function businesses()
+    {
+        return $this->belongsToMany(Business::class)->withPivot('role')->withTimestamps();
+    }
 }
