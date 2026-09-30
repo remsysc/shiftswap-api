@@ -8,6 +8,7 @@ ShiftSwap is a portfolio-grade multi-tenant SaaS for small shift-based businesse
 
 - Laravel API with Vue frontend, role-based business scheduling, shift swaps, time-off requests, queued notifications, and AWS-oriented deployment.
 - Sprint 1 plan: `docs/SPRINTS.md` — foundation plus authentication, tenancy, and authorization vertical slice.
+- Active work: Building the owner registration slice (`FR-1.1`, `FR-1.2`, `FR-2.1`) outside-in via TDD. Initial Pest feature test created in `tests/Feature/Auth/RegistrationTest.php`. Next step is implementing `routes/api.php` route and `RegisterController`.
 - The product supports multiple independent business tenants.
 - MVP users—including owners, managers, and staff—belong to one business only. Multi-business membership and switching are future capabilities.
 - A business may have multiple locations. Assignments, hours, availability, staffing warnings, and conflict checks apply across all locations within the same business.

@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 use App\Models\Business;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,10 +68,10 @@ expect()->extend('toBeOne', function () {
 
 function createBusinessWithRole(string $role, ?Business $business = null): array
 {
-    //make a fake one if null
+    // make a fake one if null
     $business ??= Business::factory()->create();
 
-    //crea a new fake user
+    // crea a new fake user
     $user = User::factory()->create();
 
     $business->users()->attach($user, ['role' => $role]);
