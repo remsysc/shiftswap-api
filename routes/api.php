@@ -15,10 +15,10 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::prefix("auth")->group(function (): void {
-    Route::post("/register", RegisterController::class);
+Route::prefix('auth')->group(function (): void {
+    Route::post('/register', RegisterController::class);
 
-    Route::get("/user", function (Request $request) {
+    Route::get('/user', function (Request $request) {
         return $request->user();
-    })->middleware("auth:sanctum");
+    })->middleware('auth:sanctum');
 });
