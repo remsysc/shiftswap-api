@@ -526,7 +526,7 @@ Called from:
 
 | Scenario                                                         | Behavior                                                                                  |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Shift `end_at == existing `start_at` for same user               | NOT an overlap (boundary equality is allowed)                                             |
+| Shift `end_at == existing`start_at` for same user                | NOT an overlap (boundary equality is allowed)                                             |
 | Manager approves swap but requester now has a conflict           | Re-run conflict detection during approval; reject approval with 422 if a conflict exists. |
 | Staff submits time-off that overlaps an existing pending request | Return 422 (FR-39)                                                                        |
 | Manager deletes a shift with a `pending_approval` swap           | Cascade-cancel the swap; notify both parties                                              |

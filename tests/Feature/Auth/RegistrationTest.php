@@ -5,7 +5,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
-test('User successfully', function () {
+test('User successfully created', function () {
     // create the payload
     $payload = [
         'name' => 'Jane Doe',
