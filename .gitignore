@@ -46,3 +46,8 @@ yarn-error.log
 /.php-cs-fixer.cache
 /.php-cs-fixer.php
 /docs/ai
+
+# IDE Helper
+/_ide_helper.php
+/_ide_helper_models.php
+/.phpstorm.meta.php

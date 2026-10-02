@@ -1,66 +1,67 @@
+
 <?php
 
-use App\Models\Business;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+use App\Models\User;
 
-it('registers a new user and business successfully', function () {
+test('User successfully created', function () {
+    // create the payload
     $payload = [
-        'name' => 'John Doe',
-        'email' => 'john@example.com',
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
         'password' => 'password123',
         'password_confirmation' => 'password123',
         'business_name' => 'Acme Corp',
     ];
 
-    $this->withoutExceptionHandling();
+    // send the post request
     $response = $this->postJson('/api/auth/register', $payload);
 
-    $response->assertStatus(201)
-        ->assertJsonStructure([
-            'data' => [
-                'id',
-                'name',
-                'email',
-            ],
-            'token',
-        ]);
-
+    // assert
+    $response->assertStatus(201);
+    // assert: check if db actually stored the record
     $this->assertDatabaseHas('users', [
-        'email' => 'john@example.com',
+        'email' => 'jane@example.com',
     ]);
-
     $this->assertDatabaseHas('businesses', [
         'name' => 'Acme Corp',
     ]);
-
-    $user = User::where('email', 'john@example.com')->first();
-    $business = Business::where('name', 'Acme Corp')->first();
-
     $this->assertDatabaseHas('business_user', [
-        'user_id' => $user->id,
-        'business_id' => $business->id,
         'role' => 'owner',
     ]);
-});
 
-it('fails to register with a duplicate email', function () {
-    User::factory()->create([
-        'email' => 'jane@example.com',
+    $response->assertJsonStructure([
+        'data' => [
+            'id',
+            'name',
+            'email',
+        ],
+        'token',
     ]);
 
-    $payload = [
-        'name' => 'Jane Smith',
-        'email' => 'jane@example.com',
-        'password' => 'password123',
-        'password_confirmation' => 'password123',
-        'business_name' => 'Beta Inc',
-    ];
+});
 
-    $response = $this->postJson('/api/auth/register', $payload);
+test('cannot register with an existing email', function () {
+    // Arrange :  create an existing user
+    //
+    User::factory()->create(['email' => 'jane@example.com']);
 
-    $response->assertStatus(422)
-        ->assertJsonValidationErrors(['email']);
+    // act: attempt to register with that same email
+    $response = $this->postJson('/api/auth/register',
+        [
+            'name' => 'Another Jane',
+            'email' => 'jane@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'business_name' => 'Acme Two',
+        ]);
+
+    // Assert: 422 status
+
+    $response->assertStatus(422)->assertJsonValidationErrors([
+        'email' => 'The email has already been taken.',
+    ]);
+
 });

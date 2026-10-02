@@ -12,36 +12,38 @@ use Illuminate\Support\Str;
 
 class RegisterController extends Controller
 {
-    public function store(RegisterRequest $request)
+    public function __invoke(RegisterRequest $request)
     {
         $user = DB::transaction(function () use ($request) {
-            // 1. Create the tenant business
-            $business = Business::create([
-                'name' => $request->business_name,
-                'slug' => Str::slug($request->business_name).'-'.Str::random(6),
-                'timezone' => 'Asia/Manila',
-            ]);
-
-            // 2. Create the user
+            // write user
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
-                'password' => $request->password, // automatically hashed by User model casts
+                'password' => $request->password,
+            ]);
+            // write business
+            $business = Business::create([
+                'name' => $request->business_name,
+                'slug' => Str::slug($request->business_name),
+                'timezone' => 'Asia/Manila',
             ]);
 
-            // 3. Link them together as owner
-            $business->users()->attach($user, ['role' => 'owner']);
+            // attach user -> business
+            $business->users()->attach($user->id, [
+                'role' => 'owner',
+            ]);
 
             return $user;
         });
 
-        // 4. Issue Sanctum token
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $token = $user->createToken('auth-token')->plainTextToken;
 
-        // 5. Return JSON resource with 201 Created
-        return (new UserResource($user))
-            ->additional(['token' => $token])
-            ->response()
-            ->setStatusCode(201);
+        return response()->json(
+            [
+                'data' => new UserResource($user),
+                'token' => $token,
+            ],
+            201,
+        );
     }
 }
