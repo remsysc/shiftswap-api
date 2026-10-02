@@ -35,7 +35,7 @@ Sprint 1 assumes a solo developer or small team and has no fixed calendar deadli
 - [x] **SETUP-4** — Establish feature-test helpers for an owner, manager, staff member, and separate business using `RefreshDatabase` (S) — supports FR-7, FR-8, and FR-13–FR-16.
 - [x] **FR-1.1** — Implement registration as one transaction that creates the `User`, `Business`, and `business_user` owner record (M) — traces to FR-1.
 - [x] **FR-1.2** — Return the registered user through the `{ data: ... }` API Resource envelope with HTTP 201 (S) — traces to FR-1.
-- [ ] **FR-2.1** — Validate duplicate email registration and return HTTP 422 with `email: ["The email has already been taken."]` (S) — traces to FR-2.
+- [x] **FR-2.1** — Validate duplicate email registration and return HTTP 422 with `email: ["The email has already been taken."]` (S) — traces to FR-2.
 - [ ] **FR-7.1** — Resolve the authenticated user’s MVP business context and scope every protected business query by `business_id` (M) — traces to FR-7.
 - [ ] **FR-8.1** — Add tenant-aware route/resource authorization so a user accessing another business’s resource receives HTTP 403 (M) — traces to FR-8.
 - [ ] **FR-9.1** — Implement login with valid credentials, Bearer token issuance, and authenticated user response (M) — traces to FR-9.

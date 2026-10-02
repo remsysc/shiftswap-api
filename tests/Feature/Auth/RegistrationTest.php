@@ -4,6 +4,7 @@
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+use App\Models\User;
 
 test('User successfully created', function () {
     // create the payload
@@ -39,4 +40,28 @@ test('User successfully created', function () {
         ],
         'token',
     ]);
+
+});
+
+test('cannot register with an existing email', function () {
+    // Arrange :  create an existing user
+    //
+    User::factory()->create(['email' => 'jane@example.com']);
+
+    // act: attempt to register with that same email
+    $response = $this->postJson('/api/auth/register',
+        [
+            'name' => 'Another Jane',
+            'email' => 'jane@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'business_name' => 'Acme Two',
+        ]);
+
+    // Assert: 422 status
+
+    $response->assertStatus(422)->assertJsonValidationErrors([
+        'email' => 'The email has already been taken.',
+    ]);
+
 });
