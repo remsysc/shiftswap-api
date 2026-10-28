@@ -18,10 +18,19 @@ class UserResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $business = $this->currentBusiness();
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
+            'role' => $business ? $this->roleIn($business) : null,
+            'business' => $business ? [
+                'id' => $business->id,
+                'name' => $business->name,
+                'slug' => $business->slug,
+                'timezone' => $business->timezone,
+            ] : null,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -14,6 +14,7 @@ use App\Http\Controllers\ShiftStaffController;
 use App\Http\Controllers\ShiftSwapController;
 use App\Http\Controllers\TimeOffRequestController;
 use App\Http\Middleware\EnsureUserBelongsToBusiness;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -34,7 +35,19 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/logout', LogoutController::class)->middleware('auth:sanctum');
 
     Route::get('/user', function (Request $request) {
-        return $request->user();
+        /** @var User $user */
+        $user = $request->user();
+        $business = $user->currentBusiness();
+
+        return array_merge($user->toArray(), [
+            'role' => $business ? $user->roleIn($business) : null,
+            'business' => $business ? [
+                'id' => $business->id,
+                'name' => $business->name,
+                'slug' => $business->slug,
+                'timezone' => $business->timezone,
+            ] : null,
+        ]);
     })->middleware('auth:sanctum');
 });
 
