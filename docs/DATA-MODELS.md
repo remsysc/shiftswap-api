@@ -1,6 +1,6 @@
 # ShiftSwap Data Models
 
-> Status: Draft | Version: 1.0 | Date: September 18, 2026
+> Status: Active | Version: 1.1 | Date: October 28, 2026
 >
 > This is the canonical data-model reference for ShiftSwap. Product behavior is defined by `docs/ShiftSwap-PRD.md`; implementation behavior is defined by `docs/SPEC.md`. Keep this file synchronized when schema decisions change.
 
@@ -149,18 +149,19 @@ A swap belongs to a specific assignment, not merely to a shift. This allows mult
 | `manager_notes`            | `text` nullable                                              |
 | `created_at`, `updated_at` | timestamps                                                   |
 
-One assignment may have one active offer at a time. Multiple assignments on the same shift may each have an offer. Only one request may be pending for a given offered assignment; competing requests are cancelled with a reason and the affected staff member is notified. Index `(business_id, status)` and `(shift_staff_id, status)`.
+One assignment may have one active offer at a time. Multiple assignments on the same shift may each have an offer. Only one request may be pending for a given offered assignment at a time; the first valid request locks the offer into `pending_approval`, and subsequent requests receive HTTP 422 until the offer is resolved. Rejection by a manager reverts `status` to `offered`, resets `requested_by = null`, and clears `manager_notes` from the record (notes are included in the rejection notification). Index `(business_id, status)` and `(shift_staff_id, status)`.
 
 Swap transitions:
 
 ```text
 offered -> pending_approval -> approved
 offered -> cancelled
-pending_approval -> offered       (manager rejects)
-pending_approval -> cancelled     (competing request accepted)
+pending_approval -> offered       (manager rejects; requested_by & manager_notes cleared)
 ```
 
-## 4. Availability and workload models
+## 4. Availability and workload models (Post-MVP Reference Schema)
+
+> The models in this section and section 5 specify the design contract for Post-MVP Backlog (BL-3 and BL-4). They are omitted from MVP database migrations to preserve focus on the core scheduling and swap marketplace deliverables.
 
 ### 4.1 `availability_templates`
 
@@ -231,7 +232,7 @@ Exceptions override the applicable recurring template for that date.
 
 Minimum and maximum hours are soft targets. Violations warn but do not block an owner or manager. Hours include assignments across all locations of the business.
 
-## 5. Staffing and audit models
+## 5. Staffing and audit models (Post-MVP Reference Schema)
 
 ### 5.1 `staffing_requirements`
 
