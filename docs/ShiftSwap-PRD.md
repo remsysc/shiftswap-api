@@ -1,8 +1,8 @@
 # ShiftSwap – Product Requirements Document (PRD)
 
-**Version:** 1.4
+**Version:** 1.5
 **Owner:** Rem
-**Date:** September 22, 2026
+**Date:** October 28, 2026
 **Status:** Draft (portfolio project)
 
 ---
@@ -44,7 +44,7 @@ Build a production-like SaaS with:
 - Shift scheduling + swap marketplace
 - Time-off requests
 - Notifications
-- AWS deployment (EC2/ECS, RDS, S3, queues)
+- AWS deployment (EC2/ECS, RDS PostgreSQL 17, S3, queues)
 
 Create a strong portfolio piece that stands out vs. typical CRUD apps and demonstrates the ability to build real business software.
 
@@ -127,7 +127,7 @@ ShiftSwap demonstrates the ability to build a focused, modern alternative with c
 **AWS deployment**
 
 - EC2 or ECS (Laravel + PHP + Nginx)
-- RDS (MySQL)
+- RDS (PostgreSQL 17)
 - S3 (exports or attachments)
 - SQS or database-driven queues
 - Basic CI/CD (GitHub Actions or deploy script)
@@ -190,13 +190,13 @@ The following are explicitly excluded from the portfolio version:
 
 ### 5.1 Authentication & Tenancy
 
-| ID   | Requirement                                                                                                                                                                                                               |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-1 | Users can register and create a new business (tenant).                                                                                                                                                                    |
-| FR-2 | Owners/Managers can add staff by email. If the email is already registered, the user is linked to the business with the Staff role. If not, a pending invitation record is created and fulfilled when the user registers. |
-| FR-3 | Each user can have different roles in different businesses.                                                                                                                                                               |
-| FR-4 | All data queries are scoped by `business_id` to ensure tenant isolation.                                                                                                                                                  |
-| FR-5 | Middleware/policies prevent users from accessing other businesses' data (no IDOR).                                                                                                                                        |
+| ID   | Requirement                                                                                                                                                                                                                                                          |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-1 | Users can register and create a new business (tenant).                                                                                                                                                                                                               |
+| FR-2 | Owners/Managers can invite staff by email. If the email is already associated with any business, the request is rejected with HTTP 422. If not, a pending invitation record is created with a signed token and fulfilled when the user registers.                   |
+| FR-3 | Each user can have different roles in different businesses (future capability; single business enforced in MVP).                                                                                                                                                     |
+| FR-4 | All data queries are scoped by `business_id` to ensure tenant isolation.                                                                                                                                                                                             |
+| FR-5 | Middleware/policies prevent users from accessing other businesses' data (no IDOR).                                                                                                                                                                                   |
 
 ### 5.2 Roles & Permissions
 
@@ -219,16 +219,16 @@ The following are explicitly excluded from the portfolio version:
 
 ### 5.4 Shift Swap Marketplace
 
-| ID    | Requirement                                                                                                                                                                                                                                          |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-15 | Staff can offer one of their shifts for swap (select shift + optional note). Swap status set to `offered`.                                                                                                                                           |
-| FR-16 | Other staff can browse offered shifts and request to take one. Multiple workers may offer different assignments on the same shift.                                                                                                                   |
-| FR-17 | When a staff member requests an offered shift, a `ShiftSwap` record is created with status `pending_approval`. Only one request may be pending for a given offered assignment; competing requests are cancelled and the affected staff are notified. |
-| FR-18 | Manager can view pending swap requests and approve or reject each.                                                                                                                                                                                   |
-| FR-19 | On approval: original staff `shift_staff.status` set to `removed`; new staff assigned; both users notified.                                                                                                                                          |
-| FR-20 | On rejection: swap reverts to `offered` state; requesting staff notified.                                                                                                                                                                            |
-| FR-21 | Staff can cancel their own offer while status is `offered`. Swap status set to `cancelled`.                                                                                                                                                          |
-| FR-22 | System prevents swaps that create overlapping shifts or conflict with approved time-off (same rule as FR-12).                                                                                                                                        |
+| ID    | Requirement                                                                                                                                                                                                                                                             |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-15 | Staff can offer one of their shifts for swap (select shift + optional note). Swap status set to `offered`.                                                                                                                                                              |
+| FR-16 | Other staff can browse offered shifts and request to take one. Multiple workers may offer different assignments on the same shift.                                                                                                                                      |
+| FR-17 | When a staff member requests an offered shift, the `ShiftSwap` record is updated to `pending_approval` with `requested_by = auth user`. Only one request may be pending for a given offered assignment at a time; subsequent requests return HTTP 422 until resolved.   |
+| FR-18 | Manager can view pending swap requests and approve or reject each.                                                                                                                                                                                                      |
+| FR-19 | On approval: original staff `shift_staff.status` set to `removed`; new staff assigned; both users notified.                                                                                                                                                             |
+| FR-20 | On rejection: swap reverts to `offered` state; `requested_by` and `manager_notes` are cleared on the swap record; requesting staff notified.                                                                                                                           |
+| FR-21 | Staff can cancel their own offer while status is `offered`. Swap status set to `cancelled`.                                                                                                                                                                             |
+| FR-22 | System prevents swaps that create overlapping shifts or conflict with approved time-off (same rule as FR-12).                                                                                                                                                           |
 
 **Swap status machine:**
 
@@ -237,10 +237,9 @@ offered → pending_approval   (another staff requests it)
 offered → cancelled          (original staff withdraws the offer)
 pending_approval → approved  (manager approves)
 pending_approval → offered   (manager rejects; swap becomes available again)
-pending_approval → cancelled (another request for the same assignment was accepted)
 ```
 
-A manager rejection reverts the offer to `offered`; automatic cancellation of a competing request is terminal for that request and notifies the affected staff member.
+A manager rejection reverts the offer to `offered` with `requested_by = null`, allowing other eligible staff members to request the shift.
 
 ### 5.5 Time-Off Requests
 
@@ -449,17 +448,19 @@ All API endpoints must follow these conventions:
 
 ### shift_swaps
 
-| Column        | Type                | Notes                                                        |
-| ------------- | ------------------- | ------------------------------------------------------------ |
-| id            | bigint PK           |                                                              |
-| business_id   | FK → businesses     |                                                              |
-| shift_id      | FK → shifts         |                                                              |
-| offered_by    | FK → users          |                                                              |
-| requested_by  | FK → users nullable | null until someone requests                                  |
-| status        | enum                | offered / pending_approval / approved / rejected / cancelled |
-| manager_notes | text nullable       |                                                              |
-| created_at    | timestamp           |                                                              |
-| updated_at    | timestamp           |                                                              |
+| Column         | Type                | Notes                                                        |
+| -------------- | ------------------- | ------------------------------------------------------------ |
+| id             | bigint PK           |                                                              |
+| business_id    | FK → businesses     |                                                              |
+| shift_id       | FK → shifts         |                                                              |
+| shift_staff_id | FK → shift_staff    | assignment being swapped                                     |
+| offered_by     | FK → users          |                                                              |
+| requested_by   | FK → users nullable | null until someone requests                                  |
+| status         | enum                | offered / pending_approval / approved / cancelled            |
+| notes          | text nullable       | note from offerer                                            |
+| manager_notes  | text nullable       | note on rejection/approval                                   |
+| created_at     | timestamp           |                                                              |
+| updated_at     | timestamp           |                                                              |
 
 ### time_off_requests
 
@@ -528,7 +529,7 @@ All API endpoints must follow these conventions:
 
 ### Database
 
-- **RDS** (MySQL 8 or Aurora MySQL)
+- **RDS** (PostgreSQL 17)
 - Security group: accessible only from app server security group
 
 ### Storage
@@ -548,7 +549,7 @@ All API endpoints must follow these conventions:
 - **Security groups:**
     - ALB: allows 80/443 from internet
     - App servers: allows traffic from ALB only
-    - RDS: allows MySQL port from app servers only
+    - RDS: allows PostgreSQL port (5432) from app servers only
 - **IAM roles:** EC2/ECS role with least-privilege permissions to S3, SQS, CloudWatch Logs
 
 ### CI/CD
@@ -636,9 +637,8 @@ These decisions refine the MVP behavior described above:
 - ShiftSwap supports multiple independent business tenants. During the MVP, a user may belong to only one business; multi-business membership and switching remain future capabilities.
 - A business may operate multiple locations. Shift conflicts, staff hours, availability, and staffing warnings are evaluated across all locations belonging to that business.
 - Owners and managers control the official schedule. Staff may offer or request swaps, but manager approval is required before assignments change. Owners and managers may also swap shifts when they are assigned workers.
-- A shift may have multiple offers for different assignments, but only one request may be pending for a given offered assignment. When one request is accepted for processing, competing requests are cancelled and the affected staff are notified.
-- Staff availability and minimum/maximum hours are customizable guidance, including reusable templates and exceptions. Violations produce warnings, not blocks; owners and managers have the final decision and may override them.
-- Owners and managers may configure minimum personnel requirements by location, role, and time window. Coverage violations produce warnings only; the manager remains responsible for the decision.
+- A shift may have multiple offers for different assignments, but only one request may be pending for a given offered assignment at a time. The first request locks the offer into `pending_approval`; subsequent requests return HTTP 422 until approved or rejected.
+- Staff availability templates, soft hours targets, and minimum personnel coverage rules are Post-MVP enhancements (BL-3 and BL-4); MVP focuses on core scheduling, swap approvals, and time-off conflict detection.
 - In the MVP, an invitation to a user who already belongs to another business is rejected. Only owners may invite or promote managers; owners and managers may invite staff.
 - Ownership transfer requires confirmation by an active member of the same business and is atomic. The successor becomes owner before the former owner leaves or becomes a manager.
 - Separate businesses never see each other's schedules. Future cross-business conflicts notify only the staff member generically; the system does not block or resolve them.

@@ -27,17 +27,17 @@
 
 ## Source
 
-These decisions are reflected in `docs/SPEC.md` version 1.5 and `docs/ShiftSwap-PRD.md` version 1.3.
+These decisions are reflected in `docs/SPEC.md` version 1.7, `docs/ShiftSwap-PRD.md` version 1.5, and `docs/DATA-MODELS.md` version 1.1.
 
 ## Finalized MVP decisions
 
-- Multiple offers are allowed for different assignments on the same shift, but only one request may be pending per offered assignment. Competing requests are set to `cancelled` with a reason and the affected staff are notified.
+- Multiple offers are allowed for different assignments on the same shift, but only one request may be pending per offered assignment. The first valid request locks the offer into `pending_approval`; subsequent requests receive HTTP 422 until approved or rejected.
 - Owners and managers may invite staff; only owners may invite or promote managers. MVP invitations are rejected when the user already belongs to another business. Resending replaces the old pending token.
 - Ownership transfer requires an active member of the same business, successor confirmation, and an atomic transfer; the former owner becomes a manager or leaves after transfer.
-- Owners/managers may swap assigned shifts. Availability templates, date exceptions, and soft minimum/maximum hours are customizable; violations warn but do not block scheduling. Minimum staffing requirements are MVP warnings only, with the manager retaining final responsibility.
+- Owners/managers may swap assigned shifts (own shifts only). Availability templates, soft minimum/maximum hours, and minimum staffing requirements are organized under Post-MVP Backlog (BL-3 and BL-4).
 - Business timezones default to `Asia/Manila`; UTC storage is interpreted using the business timezone for date and coverage rules.
 
-These decisions are reflected in `docs/SPEC.md` v1.5 and `docs/ShiftSwap-PRD.md` v1.3.
+These decisions are reflected in `docs/SPEC.md` v1.7 and `docs/ShiftSwap-PRD.md` v1.5.
 
 ## Documentation structure
 
@@ -45,6 +45,6 @@ These decisions are reflected in `docs/SPEC.md` v1.5 and `docs/ShiftSwap-PRD.md`
 
 ## Local development and validation
 
-- Use Podman Compose for the local PostgreSQL database. The canonical image is `docker.io/library/postgres:16.4-alpine`; local credentials and database settings are in `.env`/`.env.example`.
+- Use Podman Compose for the local PostgreSQL database. The canonical image is `docker.io/library/postgres:17-alpine`; local credentials and database settings are in `.env`/`.env.example`.
 - Keep PHPUnit on SQLite `:memory:` for isolated tests; local application migrations and manual connectivity use PostgreSQL.
 - A reusable global Kiro stop hook lives at `~/.kiro/agents/global-project-validation.json` and invokes `~/.kiro/hooks/validate-project.sh`. It detects common project types and runs targeted/full tests plus configured checks, including Java/Spring Maven or Gradle support.

@@ -1,6 +1,6 @@
 # SPEC — ShiftSwap
 
-> Status: Draft | Version: 1.6 | Date: September 22, 2026
+> Status: Active | Version: 1.7 | Date: October 28, 2026
 > Source of truth for implementation. Any behavior not covered here is an open
 > question, not a green light to assume. When code and spec disagree, that is a
 > bug — determine which side is wrong and fix it, then update this file.
@@ -11,16 +11,16 @@
 
 This spec covers the full MVP implementation of ShiftSwap: a multi-tenant SaaS
 for shift scheduling and swap management. It is derived from `ShiftSwap-PRD.md`
-v1.2 and defines the exact technical contract for the Laravel API backend and
+v1.5 and defines the exact technical contract for the Laravel API backend and
 Vue 3 SPA frontend.
 
 Stack:
 
-- **Backend:** PHP 8.3 + Laravel 13, MySQL 8, stateless Bearer token auth
+- **Backend:** PHP 8.5 + Laravel 13, PostgreSQL 17, stateless Bearer token auth
 - **Frontend:** Vue 3 + Vite + Pinia + Tailwind CSS (separate repository)
 - **Queue:** Laravel Jobs (SQS in production, database driver locally)
 - **Testing:** Pest (feature + unit)
-- **Deployment:** AWS EC2/ECS + RDS + S3 + SQS
+- **Deployment:** AWS EC2/ECS + RDS (PostgreSQL 17) + S3 + SQS
 
 ---
 
@@ -36,6 +36,7 @@ implemented or assumed:
 - Mobile native apps
 - Auto-scaling (must be explainable, not implemented)
 - Real-time push (WebSockets / Pusher) — polling or page reload is acceptable
+- Advanced availability templates and staffing coverage rules (deferred to Post-MVP BL-3 & BL-4)
 
 ---
 
@@ -43,29 +44,30 @@ implemented or assumed:
 
 ### 3.1 Authentication & Tenancy
 
-| ID    | Requirement                                                                                                                                                                    |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| FR-1  | WHEN a user submits a valid registration form THE SYSTEM SHALL create a `User` record, a `Business` record, and a `business_user` pivot record with `role = owner`.            |
-| FR-2  | WHEN a user submits a registration form with an email that already exists THE SYSTEM SHALL return 422 with error `email: ["The email has already been taken."]`.               |
-| FR-3  | WHEN an Owner/Manager submits a staff invite with a registered email THE SYSTEM SHALL create a `business_user` record with `role = staff` and send an invitation notification. |
-| FR-4  | WHEN an Owner/Manager submits a staff invite with an unregistered email THE SYSTEM SHALL create an `invitations` record with a signed token and send an invite email.          |
-| FR-5  | WHEN an invited user registers using the invite token THE SYSTEM SHALL link their new `User` to the business and mark the invitation as `accepted`.                            |
-| FR-6  | WHEN an invite token is expired or invalid THE SYSTEM SHALL return 422 with `token: ["Invalid or expired invitation."]`.                                                       |
-| FR-7  | THE SYSTEM SHALL scope all business data queries to `business_id` matching the authenticated user's active business context.                                                   |
-| FR-8  | IF a user attempts to access a resource belonging to a different business THEN THE SYSTEM SHALL return 403.                                                                    |
-| FR-9  | WHEN a user logs in with valid credentials THE SYSTEM SHALL issue a Bearer token and return the authenticated user object.                                                     |
-| FR-10 | WHEN a user logs in with invalid credentials THE SYSTEM SHALL return 401 with `message: "Invalid credentials."`.                                                               |
-| FR-11 | WHILE a login IP has exceeded 5 failed attempts in 60 seconds THE SYSTEM SHALL return 429 with `message: "Too many login attempts."`.                                          |
-| FR-12 | WHEN a user logs out THE SYSTEM SHALL invalidate the current Bearer token and return 204.                                                                                      |
+| ID    | Requirement                                                                                                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-1  | WHEN a user submits a valid registration form THE SYSTEM SHALL create a `User` record, a `Business` record, and a `business_user` pivot record with `role = owner`. |
+| FR-2  | WHEN a user submits a registration form with an email that already exists THE SYSTEM SHALL return 422 with error `email: ["The email has already been taken."]`.    |
+| FR-3  | WHEN an Owner/Manager submits a staff invite for an unregistered email THE SYSTEM SHALL create an `invitations` record with a signed token and send an invite email. |
+| FR-4  | WHEN an Owner/Manager invites an email already associated with any business THE SYSTEM SHALL return 422 with `email: ["This user already belongs to a business."]`. |
+| FR-5  | WHEN an invited user registers using the invite token THE SYSTEM SHALL link their new `User` to the business with `role = staff` and mark the invite as `accepted`. |
+| FR-6  | WHEN an invite token is expired or invalid THE SYSTEM SHALL return 422 with `token: ["Invalid or expired invitation."]`.                                            |
+| FR-7  | THE SYSTEM SHALL scope all business data queries to `business_id` matching the authenticated user's active business context.                                        |
+| FR-8  | IF a user attempts to access a resource belonging to a different business THEN THE SYSTEM SHALL return 403.                                                         |
+| FR-9  | WHEN a user logs in with valid credentials THE SYSTEM SHALL issue a Bearer token and return the authenticated user object.                                          |
+| FR-10 | WHEN a user logs in with invalid credentials THE SYSTEM SHALL return 401 with `message: "Invalid credentials."`.                                                    |
+| FR-11 | WHILE a login IP has exceeded 5 failed attempts in 60 seconds THE SYSTEM SHALL return 429 with `message: "Too many login attempts."`.                               |
+| FR-12 | WHEN a user logs out THE SYSTEM SHALL invalidate the current Bearer token and return 204.                                                                           |
 
 ### 3.2 Roles & Permissions
 
-| ID    | Requirement                                                                                                                                                                                                                        |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-13 | THE SYSTEM SHALL enforce three roles per business: `owner`, `manager`, `staff`.                                                                                                                                                    |
-| FR-14 | WHEN a `staff` user attempts an action restricted to `manager` or `owner` THE SYSTEM SHALL return 403.                                                                                                                             |
-| FR-15 | WHEN an `owner` updates a `business_user` role THE SYSTEM SHALL accept `manager` or `staff` as the target role; ownership transfer is handled separately and owners cannot demote themselves without first transferring ownership. |
-| FR-16 | IF an `owner` attempts to change their own role THEN THE SYSTEM SHALL return 422 with `role: ["Cannot change your own role."]`.                                                                                                    |
+| ID     | Requirement                                                                                                                                                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-13  | THE SYSTEM SHALL enforce three roles per business: `owner`, `manager`, `staff`.                                                                                                                                                    |
+| FR-14  | WHEN a `staff` user attempts an action restricted to `manager` or `owner` THE SYSTEM SHALL return 403.                                                                                                                             |
+| FR-15  | WHEN an `owner` updates a `business_user` role THE SYSTEM SHALL accept `manager` or `staff` as the target role; ownership transfer is handled separately and owners cannot demote themselves without first transferring ownership. |
+| FR-16  | IF an `owner` attempts to change their own role THEN THE SYSTEM SHALL return 422 with `role: ["Cannot change your own role."]`.                                                                                                    |
+| FR-16A | WHEN an owner or manager manages locations THE SYSTEM SHALL allow creating, updating, and deleting locations scoped to the business; staff members may only view locations.                                                      |
 
 ### 3.3 Shift Management
 
@@ -81,19 +83,19 @@ implemented or assumed:
 
 ### 3.4 Shift Swap Marketplace
 
-| ID     | Requirement                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-24  | WHEN a staff member offers a shift for swap THE SYSTEM SHALL create a `shift_swaps` record with `status = offered`, `offered_by = auth user`, `requested_by = null`.                                                                                                                                                                                                                           |
-| FR-25  | IF the staff member does not own the shift (is not in `shift_staff` with `status = assigned`) THEN THE SYSTEM SHALL return 403.                                                                                                                                                                                                                                                                |
-| FR-26  | IF the shift has already passed (`start_at < now()`) THEN THE SYSTEM SHALL return 422 with `shift_id: ["Cannot offer a past shift for swap."]`.                                                                                                                                                                                                                                                |
-| FR-27  | WHEN a staff member requests to take an offered shift THE SYSTEM SHALL update `shift_swaps.status` to `pending_approval` and set `requested_by = auth user`.                                                                                                                                                                                                                                   |
-| FR-28  | IF the requesting staff member has an overlapping shift or approved time-off THE SYSTEM SHALL return 422 with `user_id: ["You have a conflicting shift or approved time-off."]`.                                                                                                                                                                                                               |
-| FR-29  | IF the `shift_swap.status` is not `offered` THEN THE SYSTEM SHALL return 422 with `status: ["This shift is no longer available."]`.                                                                                                                                                                                                                                                            |
-| FR-29A | THE SYSTEM SHALL allow multiple offers for different assignments on the same future shift, but only one request may be pending for a given offered assignment at a time. When one request is accepted for processing, competing requests for that same assignment SHALL be set to `cancelled` with `cancellation_reason = another_request_accepted`, and the affected staff SHALL be notified. |
-| FR-30  | WHEN a manager approves a swap THE SYSTEM SHALL: set `offered_by`'s `shift_staff.status = removed`; create a new `shift_staff` record for `requested_by` with `status = assigned`; set `shift_swaps.status = approved`; dispatch `SendSwapApprovedNotification` for both users.                                                                                                                |
-| FR-31  | WHEN a manager rejects a swap THE SYSTEM SHALL: set `shift_swaps.status = offered` (revert, not rejected); set `requested_by = null`; dispatch `SendSwapRejectedNotification` to the requesting staff.                                                                                                                                                                                         |
-| FR-32  | WHEN a staff member cancels their own offer WHILE `status = offered` THE SYSTEM SHALL set `shift_swaps.status = cancelled`.                                                                                                                                                                                                                                                                    |
-| FR-33  | IF a staff member attempts to cancel a swap that is not in `offered` status THEN THE SYSTEM SHALL return 422 with `status: ["Cannot cancel a swap that is already being processed."]`.                                                                                                                                                                                                         |
+| ID     | Requirement                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-24  | WHEN a staff member offers a shift for swap THE SYSTEM SHALL create a `shift_swaps` record with `status = offered`, `offered_by = auth user`, `requested_by = null`.                                                                                                          |
+| FR-25  | IF the staff member does not own the shift (is not in `shift_staff` with `status = assigned`) THEN THE SYSTEM SHALL return 403.                                                                                                                                               |
+| FR-26  | IF the shift has already passed (`start_at < now()`) THEN THE SYSTEM SHALL return 422 with `shift_id: ["Cannot offer a past shift for swap."]`.                                                                                                                               |
+| FR-27  | WHEN a staff member requests to take an offered shift THE SYSTEM SHALL update `shift_swaps.status` to `pending_approval` and set `requested_by = auth user`.                                                                                                                  |
+| FR-28  | IF the requesting staff member has an overlapping shift or approved time-off THE SYSTEM SHALL return 422 with `user_id: ["You have a conflicting shift or approved time-off."]`.                                                                                              |
+| FR-29  | IF the `shift_swap.status` is not `offered` THEN THE SYSTEM SHALL return 422 with `status: ["This shift is no longer available."]`.                                                                                                                                           |
+| FR-29A | THE SYSTEM SHALL allow multiple offers for different assignments on the same future shift. Only one request may be pending for a given offered assignment at a time; the first valid request locks the offer into `pending_approval`, and subsequent requests receive HTTP 422.    |
+| FR-30  | WHEN a manager approves a swap THE SYSTEM SHALL: set `offered_by`'s `shift_staff.status = removed`; create a new `shift_staff` record for `requested_by` with `status = assigned`; set `shift_swaps.status = approved`; dispatch `SendSwapApprovedNotification` for both users. |
+| FR-31  | WHEN a manager rejects a swap THE SYSTEM SHALL: set `shift_swaps.status = offered` (revert, not rejected); set `requested_by = null`; clear `manager_notes`; dispatch `SendSwapRejectedNotification` (including manager rejection note) to the requesting staff.                  |
+| FR-32  | WHEN a staff member cancels their own offer WHILE `status = offered` THE SYSTEM SHALL set `shift_swaps.status = cancelled`.                                                                                                                                                   |
+| FR-33  | IF a staff member attempts to cancel a swap that is not in `offered` status THEN THE SYSTEM SHALL return 422 with `status: ["Cannot cancel a swap that is already being processed."]`.                                                                                        |
 
 **Valid status transitions:**
 
@@ -120,18 +122,17 @@ staff can still request the shift.
 
 ### 3.6 Notifications
 
-| ID     | Requirement                                                                                                                                                                              |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-40  | THE SYSTEM SHALL dispatch all notification emails as queued Laravel Jobs implementing `ShouldQueue`. No inline `Mail::send()` or synchronous notification dispatch in controllers.       |
-| FR-41  | WHEN a shift is assigned to a staff member THE SYSTEM SHALL dispatch `SendShiftAssignedNotification`.                                                                                    |
-| FR-42  | WHEN a swap offer is created THE SYSTEM SHALL notify only eligible staff members who can take the vacant shift; it SHALL NOT broadcast to all business staff or notify the offerer.      |
-| FR-43  | WHEN a swap is requested THE SYSTEM SHALL dispatch `SendSwapRequestedNotification` to the manager(s) of the business.                                                                    |
-| FR-44  | WHEN a swap is approved THE SYSTEM SHALL dispatch `SendSwapApprovedNotification` to both `offered_by` and `requested_by`.                                                                |
-| FR-45  | WHEN a swap is rejected THE SYSTEM SHALL dispatch `SendSwapRejectedNotification` to `requested_by` only.                                                                                 |
-| FR-45A | WHEN a competing swap request is automatically cancelled because another request was accepted, THE SYSTEM SHALL dispatch `SendSwapUnavailableNotification` to the affected staff member. |
-| FR-46  | WHEN a time-off request is submitted THE SYSTEM SHALL dispatch `SendTimeOffSubmittedNotification` to manager(s).                                                                         |
-| FR-47  | WHEN a time-off request is approved or rejected THE SYSTEM SHALL dispatch `SendTimeOffStatusNotification` to the requesting staff member.                                                |
-| FR-48  | WHERE in-app notifications are enabled THE SYSTEM SHALL create a `notifications` record (Laravel's built-in) for each event above.                                                       |
+| ID    | Requirement                                                                                                                                                                         |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FR-40 | THE SYSTEM SHALL dispatch all notification emails as queued Laravel Jobs implementing `ShouldQueue`. No inline `Mail::send()` or synchronous notification dispatch in controllers. |
+| FR-41 | WHEN a shift is assigned to a staff member THE SYSTEM SHALL dispatch `SendShiftAssignedNotification`.                                                                              |
+| FR-42 | WHEN a swap offer is created THE SYSTEM SHALL notify only eligible staff members who can take the vacant shift; it SHALL NOT broadcast to all business staff or notify the offerer.|
+| FR-43 | WHEN a swap is requested THE SYSTEM SHALL dispatch `SendSwapRequestedNotification` to the manager(s) of the business.                                                              |
+| FR-44 | WHEN a swap is approved THE SYSTEM SHALL dispatch `SendSwapApprovedNotification` to both `offered_by` and `requested_by`.                                                          |
+| FR-45 | WHEN a swap is rejected THE SYSTEM SHALL dispatch `SendSwapRejectedNotification` to `requested_by` only.                                                                           |
+| FR-46 | WHEN a time-off request is submitted THE SYSTEM SHALL dispatch `SendTimeOffSubmittedNotification` to manager(s).                                                                   |
+| FR-47 | WHEN a time-off request is approved or rejected THE SYSTEM SHALL dispatch `SendTimeOffStatusNotification` to the requesting staff member.                                          |
+| FR-48 | WHERE in-app notifications are enabled THE SYSTEM SHALL create a `notifications` record (Laravel's built-in) for each event above.                                                 |
 
 ### 3.7 Dashboard
 
@@ -140,16 +141,9 @@ staff can still request the shift.
 | FR-49 | WHEN a manager/owner requests the dashboard THE SYSTEM SHALL return: upcoming shifts for the next 7 days (with staff), count of `pending_approval` swaps, count of `pending` time-off requests. All counts via DB aggregation, not PHP-level iteration. |
 | FR-50 | WHEN a staff member requests the dashboard THE SYSTEM SHALL return: their assigned shifts for the next 14 days, their pending time-off requests, swap requests they are involved in (as `offered_by` or `requested_by`).                                |
 
-### 3.8 Availability, Hours, and Staffing Coverage
+### 3.8 Availability, Hours, and Staffing Coverage (Post-MVP)
 
-| ID    | Requirement                                                                                                                                                                                                                                                              |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| FR-51 | THE SYSTEM SHALL allow an owner or manager to configure business-specific staff availability, reusable availability templates, and date-specific exceptions.                                                                                                             |
-| FR-52 | THE SYSTEM SHALL allow an owner or manager to configure target minimum and maximum hours for a staff member for a configurable scheduling period, such as a week. These targets are guidance, not guarantees.                                                            |
-| FR-53 | WHEN a proposed assignment falls outside a staff member's declared availability or places their hours below the minimum or above the maximum target, THE SYSTEM SHALL show a warning but SHALL allow the owner or manager to continue. An override may record a reason.  |
-| FR-54 | THE SYSTEM SHALL allow an owner or manager to configure a minimum required personnel count for a location, role, and time window.                                                                                                                                        |
-| FR-55 | WHEN an assignment, removal, or approved swap would leave a location below its required personnel count, THE SYSTEM SHALL show a staffing warning but SHALL allow the owner or manager to continue. The manager remains responsible for the resulting coverage decision. |
-| FR-56 | Hours and staffing coverage SHALL be calculated across all locations belonging to the same business.                                                                                                                                                                     |
+> **Note:** Requirements previously designated `FR-51` through `FR-56` (availability templates, exceptions, min/max hours guidance, and minimum staffing personnel coverage) have been reconciled and moved to the Post-MVP Backlog (`BL-3` and `BL-4`). This keeps the MVP focused on delivering the core scheduling, swap marketplace, time-off requests, and asynchronous notifications cleanly.
 
 ---
 
@@ -205,9 +199,8 @@ GET /api/businesses/{business}/staff
 POST /api/businesses/{business}/staff
   Auth: Bearer token, owner, manager
   Request:  { email: string, role: "manager"|"staff" }
-  Response 201: { data: BusinessUser }   -- if user exists and was linked
-           202: { data: Invitation }      -- if invite was sent
-  Response 422: { message, errors }
+  Response 202: { data: Invitation }
+  Response 422: { message, errors }      -- user already belongs to a business, or email already invited/member
 
 PATCH /api/businesses/{business}/staff/{user}
   Auth: Bearer token, owner
@@ -449,24 +442,26 @@ Invitation:
 
 Enforced via Laravel Policy classes. No business logic in middleware.
 
-| Action                       | Owner     | Manager   | Staff               |
-| ---------------------------- | --------- | --------- | ------------------- |
-| View shifts                  | ✅        | ✅        | ✅ (own + open)     |
-| Create / edit / delete shift | ✅        | ✅        | ❌                  |
-| Assign staff to shift        | ✅        | ✅        | ❌                  |
-| Offer shift for swap         | ✅        | ✅        | ✅ (own shift only) |
-| Request a swap               | ✅        | ✅        | ✅                  |
-| Cancel own swap offer        | ✅        | ✅        | ✅ (own offer only) |
-| Approve / reject swap        | ✅        | ✅        | ❌                  |
-| Submit time-off request      | ✅        | ✅        | ✅ (own only)       |
-| Approve / reject time-off    | ✅        | ✅        | ❌                  |
-| Manage staff roles           | ✅        | ❌        | ❌                  |
-| Invite staff                 | ✅        | ✅        | ❌                  |
-| View dashboard               | ✅ (full) | ✅ (full) | ✅ (own)            |
+| Action                       | Owner               | Manager             | Staff               |
+| ---------------------------- | ------------------- | ------------------- | ------------------- |
+| View shifts                  | ✅                  | ✅                  | ✅ (own + open)     |
+| Create / edit / delete shift | ✅                  | ✅                  | ❌                  |
+| Manage locations             | ✅                  | ✅                  | ❌ (view only)      |
+| Assign staff to shift        | ✅                  | ✅                  | ❌                  |
+| Offer shift for swap         | ✅ (own shift only) | ✅ (own shift only) | ✅ (own shift only) |
+| Request a swap               | ✅                  | ✅                  | ✅                  |
+| Cancel own swap offer        | ✅                  | ✅                  | ✅ (own offer only) |
+| Approve / reject swap        | ✅                  | ✅                  | ❌                  |
+| Submit time-off request      | ✅                  | ✅                  | ✅ (own only)       |
+| Approve / reject time-off    | ✅                  | ✅                  | ❌                  |
+| Manage staff roles           | ✅                  | ❌                  | ❌                  |
+| Invite staff                 | ✅                  | ✅                  | ❌                  |
+| View dashboard               | ✅ (full)           | ✅ (full)           | ✅ (own)            |
 
 **Policy classes to implement:**
 
 ```
+LocationPolicy      — viewAny, view, create, update, delete
 ShiftPolicy         — viewAny, view, create, update, delete, assignStaff
 ShiftSwapPolicy     — viewAny, create (offer), request, approve, reject, cancel
 TimeOffPolicy       — viewAny, view, create, approve, reject
@@ -479,16 +474,15 @@ BusinessUserPolicy  — viewAny, update (role), delete
 
 All jobs implement `ShouldQueue`. All are dispatched asynchronously — never inline in a controller or service.
 
-| Job Class                          | Trigger                     | Recipients                                   |
-| ---------------------------------- | --------------------------- | -------------------------------------------- |
-| `SendShiftAssignedNotification`    | Staff assigned to shift     | Assigned staff                               |
-| `SendSwapOfferedNotification`      | Swap offer created          | Eligible staff who can take the vacant shift |
-| `SendSwapRequestedNotification`    | Swap request submitted      | All managers in business                     |
-| `SendSwapApprovedNotification`     | Swap approved               | `offered_by` + `requested_by`                |
-| `SendSwapRejectedNotification`     | Swap rejected               | `requested_by` only                          |
-| `SendSwapUnavailableNotification`  | Competing request cancelled | Affected staff member                        |
-| `SendTimeOffSubmittedNotification` | Time-off request created    | All managers in business                     |
-| `SendTimeOffStatusNotification`    | Time-off approved/rejected  | Requesting staff                             |
+| Job Class                          | Trigger                    | Recipients                                   |
+| ---------------------------------- | -------------------------- | -------------------------------------------- |
+| `SendShiftAssignedNotification`    | Staff assigned to shift    | Assigned staff                               |
+| `SendSwapOfferedNotification`      | Swap offer created         | Eligible staff who can take the vacant shift |
+| `SendSwapRequestedNotification`    | Swap request submitted     | All managers in business                     |
+| `SendSwapApprovedNotification`     | Swap approved              | `offered_by` + `requested_by`                |
+| `SendSwapRejectedNotification`     | Swap rejected              | `requested_by` only                          |
+| `SendTimeOffSubmittedNotification` | Time-off request created   | All managers in business                     |
+| `SendTimeOffStatusNotification`    | Time-off approved/rejected | Requesting staff                             |
 
 Job location: `app/Jobs/Notifications/`
 
@@ -507,10 +501,10 @@ Centralize this logic in a single service class — do not duplicate across cont
 public function hasShiftOverlap(int $userId, Carbon $start, Carbon $end, ?int $excludeShiftId = null): bool
 // Checks shift_staff (status = assigned) for overlap: start < existing_end AND end > existing_start
 
-public function hasTimeOffConflict(int $userId, Carbon $start, Carbon $end): bool
-// Checks time_off_requests (status = approved) for overlap
+public function hasTimeOffConflict(int $userId, Carbon $start, Carbon $end, string $timezone): bool
+// Checks time_off_requests (status = approved) for overlap by converting shift UTC datetimes into the business timezone before comparing with request date boundaries
 
-public function hasConflict(int $userId, Carbon $start, Carbon $end, ?int $excludeShiftId = null): bool
+public function hasConflict(int $userId, Carbon $start, Carbon $end, string $timezone, ?int $excludeShiftId = null): bool
 // Calls both above; returns true if either is true
 ```
 
@@ -526,11 +520,13 @@ Called from:
 
 | Scenario                                                         | Behavior                                                                                  |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Shift `end_at == existing`start_at` for same user                | NOT an overlap (boundary equality is allowed)                                             |
+| Shift `end_at == existing_start_at` for same user                | NOT an overlap (boundary equality is allowed)                                             |
 | Manager approves swap but requester now has a conflict           | Re-run conflict detection during approval; reject approval with 422 if a conflict exists. |
+| Manager updates shift times via PATCH with active swaps          | Cascade-cancel active `offered` or `pending_approval` swaps; notify affected staff.       |
+| Manager updates shift times with assigned staff                  | Re-validate conflicts for assigned staff; return 422 if any assignment conflict arises.    |
 | Staff submits time-off that overlaps an existing pending request | Return 422 (FR-39)                                                                        |
 | Manager deletes a shift with a `pending_approval` swap           | Cascade-cancel the swap; notify both parties                                              |
-| Staff removed from business while having an active swap          | Cancel their `offered` and `pending_approval` swaps; preserve historical records.         |
+| Staff removed from business                                      | Set upcoming `shift_staff` assignments to `removed`; cancel active `offered`/`pending` swaps; preserve history. |
 | Invitation token used twice                                      | Return 422 — `status = accepted`, token is consumed                                       |
 | Invitation expires (48hr)                                        | Return 422 — system marks `status = expired` on next use                                  |
 | Existing member is invited to the same business                  | Return 422 — user is already a member                                                     |
@@ -559,6 +555,13 @@ Cover the full request → response cycle including auth and policy enforcement.
 - Rate limit returns 429 after 5 failures ✓
 - Logout returns 204 and invalidates the token ✓
 
+**Locations**
+
+- Manager can create location ✓
+- Manager can update/delete location ✓
+- Staff cannot create/update/delete location → 403 ✓
+- Staff can view locations ✓
+
 **Shifts**
 
 - Manager can create shift ✓
@@ -577,7 +580,7 @@ Cover the full request → response cycle including auth and policy enforcement.
 - Requesting staff with overlap → 422 ✓
 - Requesting a non-offered swap → 422 ✓
 - Manager approves swap → correct `shift_staff` updates + jobs dispatched ✓
-- Manager rejects swap → status reverts to `offered`, `requested_by = null` ✓
+- Manager rejects swap → status reverts to `offered`, `requested_by = null`, `manager_notes` cleared ✓
 - Offerer can cancel own offer → status = `cancelled` ✓
 - Cannot cancel a `pending_approval` swap → 422 ✓
 
@@ -591,7 +594,7 @@ Cover the full request → response cycle including auth and policy enforcement.
 
 **Authorization**
 
-- Staff cannot access another business's shifts → 403 ✓
+- Staff cannot access another business's shifts or locations → 403 ✓
 - Staff cannot approve swaps → 403 ✓
 - Owner cannot change their own role → 422 ✓
 
@@ -642,19 +645,19 @@ ShiftFactory defaults to tomorrow 09:00–17:00
 
 ## 14. Post-MVP Backlog
 
-### BL-4: Automated staffing and hours optimization
+### BL-4: Automated staffing coverage and minimum personnel rules
 
-The MVP shows availability, hours, and staffing warnings but leaves the final decision to the owner or manager. Future versions may recommend schedules, balance hours automatically, or optimize coverage without taking control away from management.
+Allows an owner or manager to configure minimum personnel counts by location, role, and time window. Future versions may provide staffing coverage warnings, auto-recommend schedules, balance hours automatically, or optimize coverage without taking control away from management.
+
+### BL-3: Availability and weekly hours targets
+
+Supports customizable business-specific availability, reusable templates, date-specific exceptions, and soft minimum/maximum hours targets. Violations warn but do not block owner or manager scheduling decisions.
 
 ### BL-2: Privacy-preserving cross-business conflict notice
 
 If multi-business membership is enabled after the MVP, a staff member may have schedules assigned by separate companies. Each company must continue to see only its own tenant data and may assume availability based on the information within its tenant. When schedules conflict across businesses, notify only the staff member with a generic message such as `You have a schedule conflict with another business.` Do not reveal the other business or schedule, do not block the assignment, and do not automatically resolve the conflict. The staff member remains responsible for requesting a swap or making another arrangement.
 
 This behavior does not change conflict detection between locations of the same business: those conflicts remain system-enforced because all locations belong to the same tenant.
-
-### BL-3: Availability and weekly hours targets
-
-**Moved into MVP requirements FR-51–FR-53.** The MVP supports customizable business-specific availability, reusable templates, date-specific exceptions, and soft minimum/maximum hours targets. Violations warn but do not block owner or manager scheduling decisions.
 
 ### BL-1: Configurable minimum swap lead time
 
@@ -683,3 +686,4 @@ This is not required for the MVP. Until implemented, shifts may be offered or re
 | 2026-09-18 | 1.4     | Added availability and soft minimum/maximum weekly hours targets to the post-MVP backlog; owner overrides remain allowed                                                   |
 | 2026-09-18 | 1.5     | Moved availability, hours targets, and staffing warnings into MVP; defined ownership transfer endpoints, invitation rules, and business timezone behavior                  |
 | 2026-09-22 | 1.6     | Switched authentication from Sanctum SPA cookie auth to stateless Bearer token auth; frontend deployed as a separate repository; API reusable by a future mobile app       |
+| 2026-10-28 | 1.7     | Reconciled PRD/Spec drift: upgraded to PostgreSQL 17; established single-requester lock on swaps; moved availability/staffing to Post-MVP (BL-3/BL-4); added Location policy & tests; clarified shift time updates and staff removal edge cases |
