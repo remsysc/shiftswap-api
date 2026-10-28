@@ -1,0 +1,154 @@
+name: CI / DevSecOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  security-and-privacy:
+    name: Security, Privacy & Secret Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan for Secret Leaks (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for Tracked Sensitive Files
+        run: |
+          echo "Verifying no credentials, certificates, or database dumps are committed..."
+          FAIL=0
+          for pattern in ".env" "*.key" "*.pem" "id_rsa*" "*.p12" "*.sqlite" "*.sql"; do
+            MATCHES=$(git ls-files "$pattern" ":(exclude).env.example" ":(exclude).env.testing" 2>/dev/null || true)
+            if [ -n "$MATCHES" ]; then
+              echo "::error::Sensitive file tracked in git repository: $MATCHES"
+              FAIL=1
+            fi
+          done
+          if [ $FAIL -ne 0 ]; then
+            echo "Security check failed: remove sensitive files from git tracking."
+            exit 1
+          fi
+          echo "Privacy check passed: no sensitive files tracked."
+
+      - name: Setup PHP for Dependency Audit
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Audit Composer Dependencies for Vulnerabilities
+        run: composer audit --locked
+
+  code-quality:
+    name: Code Quality & Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Pint Code Formatter Check
+        run: vendor/bin/pint --test
+
+      - name: Run Larastan Static Analysis (Level 6)
+        run: ./vendor/bin/phpstan analyse --memory-limit=512M
+
+  tests:
+    name: Test Suite (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    needs: [security-and-privacy, code-quality]
+
+    services:
+      postgres:
+        image: docker.io/library/postgres:17-alpine
+        env:
+          POSTGRES_DB: shiftswap_testing
+          POSTGRES_USER: shiftswap
+          POSTGRES_PASSWORD: shiftswap_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shiftswap -d shiftswap_testing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:YBHB5bYHAdRL9nN9n6jtv1yntVVpjjntJnTeKgzHrBk=
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: shiftswap_testing
+      DB_USERNAME: shiftswap
+      DB_PASSWORD: shiftswap_ci
+      QUEUE_CONNECTION: sync
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo, pdo_pgsql, pgsql
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: Install Dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run Database Migrations
+        run: php artisan migrate --force
+
+      - name: Run Pest Test Suite
+        run: vendor/bin/pest
