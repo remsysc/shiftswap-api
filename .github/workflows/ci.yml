@@ -56,7 +56,7 @@ jobs:
           coverage: none
 
       - name: Audit Composer Dependencies for Vulnerabilities
-        run: composer audit
+        run: composer audit --locked
 
   code-quality:
     name: Code Quality & Static Analysis
