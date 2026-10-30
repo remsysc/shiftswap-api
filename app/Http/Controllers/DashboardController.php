@@ -38,6 +38,9 @@ class DashboardController extends Controller
 
             $pendingSwapsCount = ShiftSwap::where('business_id', $business->id)
                 ->where('status', 'pending_approval')
+                ->whereHas('shift', function (Builder $q): void {
+                    $q->where('start_at', '>=', now());
+                })
                 ->count();
 
             $pendingTimeOffCount = TimeOffRequest::where('business_id', $business->id)
@@ -80,6 +83,9 @@ class DashboardController extends Controller
                     ->orWhere('requested_by', $user->id);
             })
             ->whereIn('status', ['offered', 'pending_approval'])
+            ->whereHas('shift', function (Builder $q): void {
+                $q->where('start_at', '>=', now());
+            })
             ->with(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester'])
             ->latest()
             ->get();

@@ -133,6 +133,35 @@ test('staff member can request an offered shift swap (fr-27.1)', function (): vo
     expect($swap->requested_by)->toBe($this->staff2->id);
 });
 
+test('staff member cannot request an offered swap if shift is in the past', function (): void {
+    $pastShift = Shift::factory()->create([
+        'business_id' => $this->business->id,
+        'start_at' => Carbon::now()->subDays(1)->setTime(9, 0),
+        'end_at' => Carbon::now()->subDays(1)->setTime(17, 0),
+    ]);
+
+    $assignment = ShiftStaff::factory()->create([
+        'shift_id' => $pastShift->id,
+        'user_id' => $this->staff1->id,
+        'status' => 'assigned',
+    ]);
+
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $pastShift->id,
+        'shift_staff_id' => $assignment->id,
+        'offered_by' => $this->staff1->id,
+        'status' => 'offered',
+    ]);
+
+    $response = $this->actingAs($this->staff2, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/request");
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['status'])
+        ->assertJsonPath('errors.status.0', 'Cannot claim a swap for a shift that has already started or passed.');
+});
+
 test('staff member with conflicting shift cannot request swap (fr-28.1)', function (): void {
     $swap = ShiftSwap::factory()->create([
         'business_id' => $this->business->id,
@@ -232,6 +261,38 @@ test('manager can approve swap which reassigns shift and updates history (fr-30.
     ]);
 });
 
+test('manager cannot approve swap if shift has already started or passed', function (): void {
+    $pastShift = Shift::factory()->create([
+        'business_id' => $this->business->id,
+        'start_at' => Carbon::now()->subDays(1)->setTime(9, 0),
+        'end_at' => Carbon::now()->subDays(1)->setTime(17, 0),
+    ]);
+
+    $assignment = ShiftStaff::factory()->create([
+        'shift_id' => $pastShift->id,
+        'user_id' => $this->staff1->id,
+        'status' => 'assigned',
+    ]);
+
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $pastShift->id,
+        'shift_staff_id' => $assignment->id,
+        'offered_by' => $this->staff1->id,
+        'requested_by' => $this->staff2->id,
+        'status' => 'pending_approval',
+    ]);
+
+    $response = $this->actingAs($this->manager, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/approve", [
+            'manager_notes' => 'Attempting to approve past shift',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['status'])
+        ->assertJsonPath('errors.status.0', 'Cannot approve a swap for a shift that has already started or passed.');
+});
+
 test('staff member cannot approve swap (fr-14.1)', function (): void {
     $swap = ShiftSwap::factory()->create([
         'business_id' => $this->business->id,
@@ -325,6 +386,59 @@ test('other staff member cannot cancel someone elses swap offer', function (): v
     $response->assertForbidden();
 });
 
+test('claimant can withdraw their claim on a pending swap', function (): void {
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $this->futureShift->id,
+        'shift_staff_id' => $this->assignment1->id,
+        'offered_by' => $this->staff1->id,
+        'requested_by' => $this->staff2->id,
+        'status' => 'pending_approval',
+    ]);
+
+    $response = $this->actingAs($this->staff2, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/withdraw");
+
+    $response->assertOk()
+        ->assertJsonPath('data.status', 'offered')
+        ->assertJsonPath('data.requested_by', null);
+
+    $swap->refresh();
+    expect($swap->status)->toBe('offered');
+    expect($swap->requested_by)->toBeNull();
+});
+
+test('other user cannot withdraw a claim they did not make', function (): void {
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $this->futureShift->id,
+        'shift_staff_id' => $this->assignment1->id,
+        'offered_by' => $this->staff1->id,
+        'requested_by' => $this->staff2->id,
+        'status' => 'pending_approval',
+    ]);
+
+    $response = $this->actingAs($this->staff1, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/withdraw");
+
+    $response->assertForbidden();
+});
+
+test('cannot withdraw claim if swap is not in pending_approval status', function (): void {
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $this->futureShift->id,
+        'shift_staff_id' => $this->assignment1->id,
+        'offered_by' => $this->staff1->id,
+        'status' => 'offered',
+    ]);
+
+    $response = $this->actingAs($this->staff2, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/withdraw");
+
+    $response->assertForbidden();
+});
+
 test('members can list shift swaps with optional status filter', function (): void {
     ShiftSwap::factory()->create([
         'business_id' => $this->business->id,
@@ -371,4 +485,39 @@ test('cross-tenant user cannot view or mutate shift swaps', function (): void {
     $this->actingAs($otherOwner, 'sanctum')
         ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/approve")
         ->assertForbidden();
+});
+
+test('approving swap fails with 422 when requester gained a conflicting shift after requesting (fr-12, fr-28)', function (): void {
+    $swap = ShiftSwap::factory()->create([
+        'business_id' => $this->business->id,
+        'shift_id' => $this->futureShift->id,
+        'shift_staff_id' => $this->assignment1->id,
+        'offered_by' => $this->staff1->id,
+        'requested_by' => $this->staff2->id,
+        'status' => 'pending_approval',
+    ]);
+
+    // After staff2 requested the swap, staff2 is assigned to an overlapping shift
+    $overlappingShift = Shift::factory()->create([
+        'business_id' => $this->business->id,
+        'start_at' => (clone $this->futureShift->start_at)->addHour(),
+        'end_at' => (clone $this->futureShift->end_at)->addHour(),
+    ]);
+
+    ShiftStaff::factory()->create([
+        'shift_id' => $overlappingShift->id,
+        'user_id' => $this->staff2->id,
+        'status' => 'assigned',
+    ]);
+
+    $response = $this->actingAs($this->manager, 'sanctum')
+        ->postJson("/api/businesses/{$this->business->id}/shift-swaps/{$swap->id}/approve");
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['user_id'])
+        ->assertJsonPath('errors.user_id.0', 'Requesting staff member now has a conflicting shift or approved time-off.');
+
+    // Original assignment remains intact
+    $this->assignment1->refresh();
+    expect($this->assignment1->status)->toBe('assigned');
 });

@@ -222,3 +222,38 @@ test('cross-tenant user cannot view or manage shifts', function (): void {
         ->deleteJson("/api/businesses/{$this->business->id}/shifts/{$shift->id}")
         ->assertForbidden();
 });
+
+test('updating shift time window fails with 422 when assigned staff member would have a conflict (fr-12)', function (): void {
+    $shift1 = Shift::factory()->create([
+        'business_id' => $this->business->id,
+        'start_at' => Carbon::parse('2026-11-10 08:00:00'),
+        'end_at' => Carbon::parse('2026-11-10 12:00:00'),
+    ]);
+
+    $shift2 = Shift::factory()->create([
+        'business_id' => $this->business->id,
+        'start_at' => Carbon::parse('2026-11-10 14:00:00'),
+        'end_at' => Carbon::parse('2026-11-10 18:00:00'),
+    ]);
+
+    ShiftStaff::factory()->create([
+        'shift_id' => $shift1->id,
+        'user_id' => $this->staff->id,
+        'status' => 'assigned',
+    ]);
+
+    ShiftStaff::factory()->create([
+        'shift_id' => $shift2->id,
+        'user_id' => $this->staff->id,
+        'status' => 'assigned',
+    ]);
+
+    // Extending shift1 end_at to 15:00 overlaps shift2 (14:00 - 18:00) for assigned staff
+    $response = $this->actingAs($this->manager, 'sanctum')
+        ->patchJson("/api/businesses/{$this->business->id}/shifts/{$shift1->id}", [
+            'end_at' => Carbon::parse('2026-11-10 15:00:00')->toIso8601String(),
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['start_at']);
+});

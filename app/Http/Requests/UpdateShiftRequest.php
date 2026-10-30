@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Business;
 use App\Models\Shift;
+use App\Services\ShiftConflictService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -41,12 +42,16 @@ class UpdateShiftRequest extends FormRequest
     }
 
     /**
-     * Enforce chronological validity.
+     * Enforce chronological validity and conflict prevention for assigned staff.
      */
     protected function passedValidation(): void
     {
+        /** @var Business $business */
+        $business = $this->route('business');
         /** @var Shift $shift */
         $shift = $this->route('shift');
+
+        abort_if($shift->business_id !== $business->id, 403);
 
         $startAtInput = $this->input('start_at');
         $endAtInput = $this->input('end_at');
@@ -58,6 +63,25 @@ class UpdateShiftRequest extends FormRequest
             throw ValidationException::withMessages([
                 'end_at' => ['End time must be after start time.'],
             ]);
+        }
+
+        if ($startAtInput !== null || $endAtInput !== null) {
+            $conflictService = app(ShiftConflictService::class);
+            $assignedStaff = $shift->assignedStaff()->with('user')->get();
+
+            foreach ($assignedStaff as $assignment) {
+                if ($assignment->user !== null && $conflictService->hasConflict(
+                    $assignment->user,
+                    $startAt,
+                    $endAt,
+                    $shift->id,
+                    $business->timezone
+                )) {
+                    throw ValidationException::withMessages([
+                        'start_at' => ['Updated shift window conflicts with an assigned staff member\'s schedule or approved time-off.'],
+                    ]);
+                }
+            }
         }
     }
 }

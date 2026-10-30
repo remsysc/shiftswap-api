@@ -37,13 +37,16 @@ WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
 
 RUN mkdir -p \
+    /var/www/.config \
     bootstrap/cache \
     storage/framework/cache/data \
     storage/framework/sessions \
     storage/framework/testing \
     storage/framework/views \
     storage/logs \
-    && chown -R www-data:www-data bootstrap/cache storage
+    && chown -R www-data:www-data /var/www bootstrap/cache storage
+
+ENV XDG_CONFIG_HOME=/tmp
 
 USER www-data
 

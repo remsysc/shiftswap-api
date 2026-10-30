@@ -328,6 +328,12 @@ POST /api/businesses/{business}/shift-swaps/{swap}/cancel
   Auth: Bearer token, offered_by only
   Response 200: { data: ShiftSwap }
   Response 422: { message, errors }    -- wrong status
+
+POST /api/businesses/{business}/shift-swaps/{swap}/withdraw
+  Auth: Bearer token, requested_by only
+  Response 200: { data: ShiftSwap }    -- reverts status to 'offered' and clears requested_by
+  Response 403: (not the claimant)
+  Response 422: { message, errors }    -- wrong status (not pending_approval)
 ```
 
 ### 5.6 Time-Off Requests

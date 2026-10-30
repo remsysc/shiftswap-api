@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class TimeOffRequestController extends Controller
 {
@@ -110,6 +111,12 @@ class TimeOffRequestController extends Controller
         abort_if($timeOffRequest->business_id !== $business->id, 403);
         Gate::authorize('approve', $timeOffRequest);
 
+        if ($timeOffRequest->status !== 'pending') {
+            throw ValidationException::withMessages([
+                'status' => ['Time-off request has already been processed.'],
+            ]);
+        }
+
         $timeOffRequest->update([
             'status' => 'approved',
             'manager_notes' => $request->input('manager_notes'),
@@ -128,6 +135,12 @@ class TimeOffRequestController extends Controller
     {
         abort_if($timeOffRequest->business_id !== $business->id, 403);
         Gate::authorize('reject', $timeOffRequest);
+
+        if ($timeOffRequest->status !== 'pending') {
+            throw ValidationException::withMessages([
+                'status' => ['Time-off request has already been processed.'],
+            ]);
+        }
 
         $timeOffRequest->update([
             'status' => 'rejected',

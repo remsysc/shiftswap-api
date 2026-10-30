@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -54,6 +55,11 @@ class OwnershipTransferController extends Controller
      */
     public function accept(Request $request, string $token): Response
     {
+        $throttleKey = 'ownership-accept:'.$request->ip();
+        if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
+            abort(429, 'Too many attempts.');
+        }
+
         $tokenHash = hash('sha256', $token);
 
         /** @var OwnershipTransfer|null $transfer */
@@ -64,6 +70,8 @@ class OwnershipTransferController extends Controller
                 $transfer->update(['status' => 'expired']);
             }
 
+            RateLimiter::hit($throttleKey, 60);
+
             throw ValidationException::withMessages([
                 'token' => ['Invalid or expired ownership transfer.'],
             ]);
@@ -73,22 +81,33 @@ class OwnershipTransferController extends Controller
         abort_unless($user !== null && $user->id === $transfer->successor_id, 403, 'Only the designated successor can accept this transfer.');
 
         DB::transaction(function () use ($transfer): void {
+            /** @var OwnershipTransfer $lockedTransfer */
+            $lockedTransfer = OwnershipTransfer::whereKey($transfer->id)->lockForUpdate()->firstOrFail();
+
+            if (! $lockedTransfer->isPending()) {
+                throw ValidationException::withMessages([
+                    'token' => ['Invalid or expired ownership transfer.'],
+                ]);
+            }
+
             // Promote successor to owner
-            $transfer->business->users()->updateExistingPivot($transfer->successor_id, [
+            $lockedTransfer->business->users()->updateExistingPivot($lockedTransfer->successor_id, [
                 'role' => 'owner',
             ]);
 
             // Demote former owner to manager
-            $transfer->business->users()->updateExistingPivot($transfer->current_owner_id, [
+            $lockedTransfer->business->users()->updateExistingPivot($lockedTransfer->current_owner_id, [
                 'role' => 'manager',
             ]);
 
             // Mark transfer as accepted
-            $transfer->update([
+            $lockedTransfer->update([
                 'status' => 'accepted',
                 'accepted_at' => now(),
             ]);
         });
+
+        RateLimiter::clear($throttleKey);
 
         return response()->noContent();
     }

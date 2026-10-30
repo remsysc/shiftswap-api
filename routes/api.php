@@ -62,19 +62,19 @@ Route::prefix('businesses/{business}')
 
         Route::get('/staff', [BusinessUserController::class, 'index']);
         Route::post('/staff', [InvitationController::class, 'store']);
-        Route::patch('/staff/{user}', [BusinessUserController::class, 'update']);
+        Route::match(['put', 'patch'], '/staff/{user}', [BusinessUserController::class, 'update']);
         Route::get('/invitations', [InvitationController::class, 'index']);
 
         Route::get('/locations', [LocationController::class, 'index']);
         Route::post('/locations', [LocationController::class, 'store']);
         Route::get('/locations/{location}', [LocationController::class, 'show']);
-        Route::patch('/locations/{location}', [LocationController::class, 'update']);
+        Route::match(['put', 'patch'], '/locations/{location}', [LocationController::class, 'update']);
         Route::delete('/locations/{location}', [LocationController::class, 'destroy']);
 
         Route::get('/shifts', [ShiftController::class, 'index']);
         Route::post('/shifts', [ShiftController::class, 'store']);
         Route::get('/shifts/{shift}', [ShiftController::class, 'show']);
-        Route::patch('/shifts/{shift}', [ShiftController::class, 'update']);
+        Route::match(['put', 'patch'], '/shifts/{shift}', [ShiftController::class, 'update']);
         Route::delete('/shifts/{shift}', [ShiftController::class, 'destroy']);
 
         Route::post('/shifts/{shift}/staff', [ShiftStaffController::class, 'store']);
@@ -86,6 +86,7 @@ Route::prefix('businesses/{business}')
         Route::post('/shift-swaps/{swap}/approve', [ShiftSwapController::class, 'approve']);
         Route::post('/shift-swaps/{swap}/reject', [ShiftSwapController::class, 'reject']);
         Route::post('/shift-swaps/{swap}/cancel', [ShiftSwapController::class, 'cancel']);
+        Route::post('/shift-swaps/{swap}/withdraw', [ShiftSwapController::class, 'withdraw']);
 
         Route::get('/time-off-requests', [TimeOffRequestController::class, 'index']);
         Route::post('/time-off-requests', [TimeOffRequestController::class, 'store']);

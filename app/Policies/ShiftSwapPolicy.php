@@ -41,6 +41,14 @@ class ShiftSwapPolicy
     }
 
     /**
+     * Determine whether the user can withdraw their claim on a swap offer.
+     */
+    public function withdraw(User $user, ShiftSwap $swap): bool
+    {
+        return $swap->requested_by === $user->id;
+    }
+
+    /**
      * Determine whether the user can approve a swap request.
      */
     public function approve(User $user, ShiftSwap $swap): bool

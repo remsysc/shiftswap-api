@@ -39,6 +39,8 @@ class AssignShiftStaffRequest extends FormRequest
         /** @var Shift $shift */
         $shift = $this->route('shift');
 
+        abort_if($shift->business_id !== $business->id, 403);
+
         /** @var User $targetUser */
         $targetUser = User::findOrFail($this->input('user_id'));
 
@@ -56,7 +58,7 @@ class AssignShiftStaffRequest extends FormRequest
 
         $conflictService = app(ShiftConflictService::class);
 
-        if ($conflictService->hasConflict($targetUser, $shift->start_at, $shift->end_at, $shift->id)) {
+        if ($conflictService->hasConflict($targetUser, $shift->start_at, $shift->end_at, $shift->id, $business->timezone)) {
             throw ValidationException::withMessages([
                 'user_id' => ['This staff member has a conflicting shift or approved time-off.'],
             ]);
