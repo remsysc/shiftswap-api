@@ -65,7 +65,13 @@ class ShiftSwapController extends Controller
         $eligibleStaff = $business->users()
             ->where('users.id', '!=', $swap->offered_by)
             ->get()
-            ->filter(fn (User $u) => ! $conflictService->hasConflict($u, $swap->shift->start_at, $swap->shift->end_at));
+            ->filter(fn (User $u) => ! $conflictService->hasConflict(
+                $u,
+                $swap->shift->start_at,
+                $swap->shift->end_at,
+                $swap->shift_id,
+                $business->timezone
+            ));
 
         foreach ($eligibleStaff as $staffMember) {
             $staffMember->notify(new SendSwapOfferedNotification($swap));
@@ -86,36 +92,54 @@ class ShiftSwapController extends Controller
 
         $user = $request->user();
 
-        // FR-29: Shift swap must be in 'offered' status
-        if ($swap->status !== 'offered') {
-            throw ValidationException::withMessages([
-                'status' => ['This shift is no longer available.'],
-            ]);
-        }
+        DB::transaction(function () use ($business, $swap, $user): void {
+            /** @var ShiftSwap $lockedSwap */
+            $lockedSwap = ShiftSwap::whereKey($swap->id)->lockForUpdate()->firstOrFail();
 
-        // Cannot request own offer
-        if ($user !== null && $swap->offered_by === $user->id) {
-            throw ValidationException::withMessages([
-                'user_id' => ['You cannot request your own swap offer.'],
-            ]);
-        }
-
-        // FR-28: Requesting staff member must not have conflicting shift or time-off
-        if ($user !== null) {
-            $conflictService = app(ShiftConflictService::class);
-            if ($conflictService->hasConflict($user, $swap->shift->start_at, $swap->shift->end_at)) {
+            // FR-29: Shift swap must be in 'offered' status
+            if ($lockedSwap->status !== 'offered') {
                 throw ValidationException::withMessages([
-                    'user_id' => ['You have a conflicting shift or approved time-off.'],
+                    'status' => ['This shift is no longer available.'],
                 ]);
             }
-        }
 
-        $swap->update([
-            'status' => 'pending_approval',
-            'requested_by' => $user?->id,
-        ]);
+            // Cannot request a past shift
+            if ($lockedSwap->shift->start_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Cannot claim a swap for a shift that has already started or passed.'],
+                ]);
+            }
 
-        $swap->load(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester']);
+            // Cannot request own offer
+            if ($user !== null && $lockedSwap->offered_by === $user->id) {
+                throw ValidationException::withMessages([
+                    'user_id' => ['You cannot request your own swap offer.'],
+                ]);
+            }
+
+            // FR-28: Requesting staff member must not have conflicting shift or time-off
+            if ($user !== null) {
+                $conflictService = app(ShiftConflictService::class);
+                if ($conflictService->hasConflict(
+                    $user,
+                    $lockedSwap->shift->start_at,
+                    $lockedSwap->shift->end_at,
+                    $lockedSwap->shift_id,
+                    $business->timezone
+                )) {
+                    throw ValidationException::withMessages([
+                        'user_id' => ['You have a conflicting shift or approved time-off.'],
+                    ]);
+                }
+            }
+
+            $lockedSwap->update([
+                'status' => 'pending_approval',
+                'requested_by' => $user?->id,
+            ]);
+        });
+
+        $swap->refresh()->load(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester']);
 
         // FR-43: Dispatch SendSwapRequestedNotification to manager(s)
         $managers = $business->users()->wherePivotIn('role', ['owner', 'manager'])->get();
@@ -134,15 +158,50 @@ class ShiftSwapController extends Controller
         abort_if($swap->business_id !== $business->id, 403);
         Gate::authorize('approve', $swap);
 
-        if ($swap->status !== 'pending_approval') {
-            throw ValidationException::withMessages([
-                'status' => ['Swap request is not pending approval.'],
-            ]);
-        }
+        DB::transaction(function () use ($business, $request, $swap): void {
+            /** @var ShiftSwap $lockedSwap */
+            $lockedSwap = ShiftSwap::whereKey($swap->id)
+                ->with(['shift', 'shiftStaff', 'requester'])
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        DB::transaction(function () use ($request, $swap): void {
+            if ($lockedSwap->status !== 'pending_approval') {
+                throw ValidationException::withMessages([
+                    'status' => ['Swap request is not pending approval.'],
+                ]);
+            }
+
+            if ($lockedSwap->shiftStaff->status !== 'assigned') {
+                throw ValidationException::withMessages([
+                    'status' => ['The original shift assignment is no longer active.'],
+                ]);
+            }
+
+            // Cannot approve a swap for a past shift
+            if ($lockedSwap->shift->start_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'status' => ['Cannot approve a swap for a shift that has already started or passed.'],
+                ]);
+            }
+
+            // Re-verify conflict at approval time to prevent TOCTOU double-booking
+            if ($lockedSwap->requester !== null) {
+                $conflictService = app(ShiftConflictService::class);
+                if ($conflictService->hasConflict(
+                    $lockedSwap->requester,
+                    $lockedSwap->shift->start_at,
+                    $lockedSwap->shift->end_at,
+                    $lockedSwap->shift_id,
+                    $business->timezone
+                )) {
+                    throw ValidationException::withMessages([
+                        'user_id' => ['Requesting staff member now has a conflicting shift or approved time-off.'],
+                    ]);
+                }
+            }
+
             // Update offerer assignment status to removed
-            $swap->shiftStaff->update([
+            $lockedSwap->shiftStaff->update([
                 'status' => 'removed',
                 'removed_at' => now(),
                 'removed_reason' => 'swap_approved',
@@ -150,20 +209,20 @@ class ShiftSwapController extends Controller
 
             // Create new assignment for requester
             ShiftStaff::create([
-                'shift_id' => $swap->shift_id,
-                'user_id' => $swap->requested_by,
+                'shift_id' => $lockedSwap->shift_id,
+                'user_id' => $lockedSwap->requested_by,
                 'status' => 'assigned',
                 'assigned_at' => now(),
             ]);
 
             // Mark swap as approved
-            $swap->update([
+            $lockedSwap->update([
                 'status' => 'approved',
                 'manager_notes' => $request->input('manager_notes'),
             ]);
         });
 
-        $swap->load(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester']);
+        $swap->refresh()->load(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester']);
 
         // FR-44: Dispatch SendSwapApprovedNotification to both users
         $swap->offerer->notify(new SendSwapApprovedNotification($swap));
@@ -226,6 +285,32 @@ class ShiftSwapController extends Controller
         ]);
 
         $swap->load(['shift.location', 'shift.assignedStaff.user', 'offerer', 'requester']);
+
+        return new ShiftSwapResource($swap);
+    }
+
+    /**
+     * Claimant cancels / withdraws their claim on an offered swap.
+     */
+    public function withdraw(Request $request, Business $business, ShiftSwap $swap): ShiftSwapResource
+    {
+        abort_if($swap->business_id !== $business->id, 403);
+        Gate::authorize('withdraw', $swap);
+
+        if ($swap->status !== 'pending_approval') {
+            throw ValidationException::withMessages([
+                'status' => ['Cannot withdraw a claim that is not pending approval.'],
+            ]);
+        }
+
+        $swap->update([
+            'status' => 'offered',
+            'requested_by' => null,
+            'manager_notes' => null,
+        ]);
+
+        $swap->unsetRelation('requester');
+        $swap->load(['shift.location', 'shift.assignedStaff.user', 'offerer']);
 
         return new ShiftSwapResource($swap);
     }

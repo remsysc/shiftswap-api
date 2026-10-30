@@ -15,6 +15,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -74,6 +75,11 @@ class InvitationController extends Controller
      */
     public function accept(AcceptInvitationRequest $request, string $token): JsonResponse
     {
+        $throttleKey = 'invitation-accept:'.$request->ip();
+        if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
+            abort(429, 'Too many attempts.');
+        }
+
         $tokenHash = hash('sha256', $token);
 
         /** @var Invitation|null $invitation */
@@ -84,29 +90,42 @@ class InvitationController extends Controller
                 $invitation->update(['status' => 'expired']);
             }
 
+            RateLimiter::hit($throttleKey, 60);
+
             throw ValidationException::withMessages([
                 'token' => ['Invalid or expired invitation.'],
             ]);
         }
 
         $user = DB::transaction(function () use ($request, $invitation): User {
+            /** @var Invitation $lockedInvitation */
+            $lockedInvitation = Invitation::whereKey($invitation->id)->lockForUpdate()->firstOrFail();
+
+            if (! $lockedInvitation->isPending()) {
+                throw ValidationException::withMessages([
+                    'token' => ['Invalid or expired invitation.'],
+                ]);
+            }
+
             /** @var User $newUser */
             $newUser = User::create([
                 'name' => (string) $request->input('name'),
-                'email' => $invitation->email,
+                'email' => $lockedInvitation->email,
                 'password' => Hash::make((string) $request->input('password')),
             ]);
 
-            $invitation->business->users()->attach($newUser->id, [
+            $lockedInvitation->business->users()->attach($newUser->id, [
                 'role' => 'staff',
             ]);
 
-            $invitation->update([
+            $lockedInvitation->update([
                 'status' => 'accepted',
             ]);
 
             return $newUser;
         });
+
+        RateLimiter::clear($throttleKey);
 
         $bearerToken = $user->createToken('auth-token')->plainTextToken;
 

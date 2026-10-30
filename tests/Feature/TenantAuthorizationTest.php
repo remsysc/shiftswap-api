@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Business;
+use App\Models\Location;
+use App\Models\Shift;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
@@ -59,4 +61,52 @@ test('scopes staff listing strictly to the active business context (fr-7.1)', fu
     $response->assertJsonFragment(['email' => $staffA->email]);
     $response->assertJsonMissing(['email' => $ownerB->email]);
     $response->assertJsonMissing(['email' => $staffB->email]);
+});
+
+test('enforces strict role boundaries preventing staff from calling manager or owner endpoints', function () {
+    [$business, $owner] = createOwner();
+    [, $manager] = createManager($business);
+    [, $staff] = createStaff($business);
+
+    $location = Location::factory()->create(['business_id' => $business->id]);
+    $shift = Shift::factory()->create(['business_id' => $business->id]);
+
+    // Staff cannot manage locations
+    $this->actingAs($staff, 'sanctum')
+        ->postJson("/api/businesses/{$business->id}/locations", ['name' => 'Unauthorized Branch'])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'sanctum')
+        ->patchJson("/api/businesses/{$business->id}/locations/{$location->id}", ['name' => 'Tampered'])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'sanctum')
+        ->deleteJson("/api/businesses/{$business->id}/locations/{$location->id}")
+        ->assertForbidden();
+
+    // Staff cannot mutate shifts or assign/remove staff
+    $this->actingAs($staff, 'sanctum')
+        ->patchJson("/api/businesses/{$business->id}/shifts/{$shift->id}", ['role_label' => 'Tampered'])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'sanctum')
+        ->deleteJson("/api/businesses/{$business->id}/shifts/{$shift->id}")
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'sanctum')
+        ->postJson("/api/businesses/{$business->id}/shifts/{$shift->id}/staff", ['user_id' => $staff->id])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'sanctum')
+        ->deleteJson("/api/businesses/{$business->id}/shifts/{$shift->id}/staff/{$staff->id}")
+        ->assertForbidden();
+
+    // Staff and Manager cannot initiate ownership transfer (Owner only)
+    $this->actingAs($staff, 'sanctum')
+        ->postJson("/api/businesses/{$business->id}/ownership-transfer", ['successor_email' => $manager->email])
+        ->assertForbidden();
+
+    $this->actingAs($manager, 'sanctum')
+        ->postJson("/api/businesses/{$business->id}/ownership-transfer", ['successor_email' => $staff->email])
+        ->assertForbidden();
 });

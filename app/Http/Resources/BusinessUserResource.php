@@ -24,8 +24,11 @@ class BusinessUserResource extends JsonResource
         $pivot = $this->pivot;
 
         return [
-            'id' => $pivot instanceof BusinessUser ? $pivot->id : $this->id,
+            'id' => $this->id,
+            'pivot_id' => $pivot instanceof BusinessUser ? $pivot->id : null,
             'user' => new UserResource($this->resource),
+            'name' => $this->name,
+            'email' => $this->email,
             'role' => $pivot instanceof BusinessUser ? $pivot->role : null,
             'created_at' => ($pivot instanceof BusinessUser ? $pivot->created_at : $this->created_at)?->toIso8601String(),
         ];

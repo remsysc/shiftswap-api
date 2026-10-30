@@ -11,7 +11,13 @@ ShiftSwap is a portfolio-grade multi-tenant SaaS for small shift-based businesse
 - Completed:
   - Sprint 1 is 100% complete! Foundation, registration (`FR-1.1`, `FR-1.2`, `FR-2.1`), tenant context & authorization (`FR-7.1`, `FR-8.1`), authentication & token management (`FR-9.1`–`FR-12.1`), roles & permissions policy slice (`FR-13.1`–`FR-16.1`), and project validation hook (`SETUP-5`) are fully implemented and verified via TDD.
   - Sprint 2 is 100% complete! Staff invitations (`FR-3.1`–`FR-6.1`), location management (`FR-16A.1`), shift schema & models (`SETUP-7`), shift CRUD (`FR-17.1`, `FR-18.1`, `FR-22.1`, `FR-23.1`), and shift overlap conflict detection & staff assignment (`FR-19.1`, `FR-20.1`, `FR-21`) are fully implemented and verified.
-  - Sprint 3 is 100% complete! Shift Swap Marketplace (`FR-24`–`FR-33`), Time-Off Requests with conflict detection (`FR-34`–`FR-39`), Queued Notifications & In-App Feed (`FR-40`–`FR-48`), Dashboards (`FR-49`–`FR-50`), and Business Ownership Transfer (`SPEC 5.2`) are fully implemented and verified. All 118 tests pass across 560 assertions with zero Larastan errors and clean Pint formatting.
+  - Sprint 3 is 100% complete! Shift Swap Marketplace (`FR-24`–`FR-33`), Time-Off Requests with conflict detection (`FR-34`–`FR-39`), Queued Notifications & In-App Feed (`FR-40`–`FR-48`), Dashboards (`FR-49`–`FR-50`), and Business Ownership Transfer (`SPEC 5.2`) are fully implemented and verified.
+  - Fullstack Integration & Hardening:
+    - Added fullstack `compose.yaml` orchestrating PostgreSQL 17, Laravel 11 API, and Vue 3 frontend with hot-reload volume mapping.
+    - Added Shift Swap Claimant Withdrawal (`POST /shift-swaps/{swap}/withdraw`) enabling staff to cancel claims prior to manager review, safely returning the shift to open marketplace.
+    - Hardened concurrency using `lockForUpdate()` in swap approvals and claim processing, preventing race conditions and double bookings.
+    - Added rate limiting for public token acceptance endpoints (`invitation-accept`, `ownership-accept`).
+    - All 127 Pest feature/unit tests pass (654 assertions) with clean Pint code style.
 - Reconciled: PRD v1.5, SPEC v1.7, and DATA-MODELS v1.1 aligned. Standardized on PostgreSQL 17, single-requester swap lock, and shifted availability/staffing configuration to Post-MVP (BL-3 & BL-4).
 - Active work / Next steps: Sprints 1, 2, and 3 backend slices are 100% complete. Ready for next phases (e.g. frontend integration, deployment pipeline, or Post-MVP backlog).
 - The product supports multiple independent business tenants.

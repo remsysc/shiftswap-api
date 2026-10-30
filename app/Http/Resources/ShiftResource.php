@@ -28,6 +28,7 @@ class ShiftResource extends JsonResource
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'staff' => ShiftStaffResource::collection($this->whenLoaded('assignedStaff')),
+            'assigned_staff' => ShiftStaffResource::collection($this->whenLoaded('assignedStaff')),
         ];
     }
 }

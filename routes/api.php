@@ -14,6 +14,7 @@ use App\Http\Controllers\ShiftStaffController;
 use App\Http\Controllers\ShiftSwapController;
 use App\Http\Controllers\TimeOffRequestController;
 use App\Http\Middleware\EnsureUserBelongsToBusiness;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -34,7 +35,19 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/logout', LogoutController::class)->middleware('auth:sanctum');
 
     Route::get('/user', function (Request $request) {
-        return $request->user();
+        /** @var User $user */
+        $user = $request->user();
+        $business = $user->currentBusiness();
+
+        return array_merge($user->toArray(), [
+            'role' => $business ? $user->roleIn($business) : null,
+            'business' => $business ? [
+                'id' => $business->id,
+                'name' => $business->name,
+                'slug' => $business->slug,
+                'timezone' => $business->timezone,
+            ] : null,
+        ]);
     })->middleware('auth:sanctum');
 });
 
@@ -49,19 +62,19 @@ Route::prefix('businesses/{business}')
 
         Route::get('/staff', [BusinessUserController::class, 'index']);
         Route::post('/staff', [InvitationController::class, 'store']);
-        Route::patch('/staff/{user}', [BusinessUserController::class, 'update']);
+        Route::match(['put', 'patch'], '/staff/{user}', [BusinessUserController::class, 'update']);
         Route::get('/invitations', [InvitationController::class, 'index']);
 
         Route::get('/locations', [LocationController::class, 'index']);
         Route::post('/locations', [LocationController::class, 'store']);
         Route::get('/locations/{location}', [LocationController::class, 'show']);
-        Route::patch('/locations/{location}', [LocationController::class, 'update']);
+        Route::match(['put', 'patch'], '/locations/{location}', [LocationController::class, 'update']);
         Route::delete('/locations/{location}', [LocationController::class, 'destroy']);
 
         Route::get('/shifts', [ShiftController::class, 'index']);
         Route::post('/shifts', [ShiftController::class, 'store']);
         Route::get('/shifts/{shift}', [ShiftController::class, 'show']);
-        Route::patch('/shifts/{shift}', [ShiftController::class, 'update']);
+        Route::match(['put', 'patch'], '/shifts/{shift}', [ShiftController::class, 'update']);
         Route::delete('/shifts/{shift}', [ShiftController::class, 'destroy']);
 
         Route::post('/shifts/{shift}/staff', [ShiftStaffController::class, 'store']);
@@ -73,6 +86,7 @@ Route::prefix('businesses/{business}')
         Route::post('/shift-swaps/{swap}/approve', [ShiftSwapController::class, 'approve']);
         Route::post('/shift-swaps/{swap}/reject', [ShiftSwapController::class, 'reject']);
         Route::post('/shift-swaps/{swap}/cancel', [ShiftSwapController::class, 'cancel']);
+        Route::post('/shift-swaps/{swap}/withdraw', [ShiftSwapController::class, 'withdraw']);
 
         Route::get('/time-off-requests', [TimeOffRequestController::class, 'index']);
         Route::post('/time-off-requests', [TimeOffRequestController::class, 'store']);
